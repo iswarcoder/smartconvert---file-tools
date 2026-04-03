@@ -7,6 +7,8 @@
 // GLOBAL STATE
 // ============================================
 
+const API_BASE_URL = 'https://smartconvert-file-tools.onrender.com';
+
 const platformState = {
   currentTool: 'dashboard',
   availableTools: [],
@@ -117,7 +119,7 @@ const FALLBACK_TOOLS = [
 
 async function fetchAvailableTools() {
   try {
-    const response = await fetch('/api/tools');
+    const response = await fetch(`${API_BASE_URL}/api/tools`);
     const data = await response.json();
     
     if (data.status === 'success' && data.tools && data.tools.length > 0) {
@@ -550,7 +552,7 @@ async function performConversion() {
     const formData = new FormData();
     formData.append('file', file);
     
-    const uploadResponse = await fetch('/api/upload', {
+    const uploadResponse = await fetch(`${API_BASE_URL}/api/upload`, {
       method: 'POST',
       body: formData
     });
@@ -564,7 +566,7 @@ async function performConversion() {
     showProgress('convert', 60, '⚙️ Converting file...');
     
     // Convert file
-    const convertResponse = await fetch('/api/convert', {
+    const convertResponse = await fetch(`${API_BASE_URL}/api/convert`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -681,7 +683,7 @@ async function performMergePdf() {
       formData.append('files', file);
     });
     
-    const response = await fetch('/api/pdf-merge', {
+    const response = await fetch(`${API_BASE_URL}/api/pdf-merge`, {
       method: 'POST',
       body: formData
     });
@@ -765,7 +767,7 @@ async function performSplitPdf() {
     formData.append('file', file);
     formData.append('pages', pages);
     
-    const response = await fetch('/api/split-pdf', {
+    const response = await fetch(`${API_BASE_URL}/api/split-pdf`, {
       method: 'POST',
       body: formData
     });
@@ -851,7 +853,7 @@ async function performCompressPdf() {
     formData.append('file', file);
       formData.append('target_size_kb', targetSize);
     
-    const response = await fetch('/api/compress-pdf', {
+    const response = await fetch(`${API_BASE_URL}/api/compress-pdf`, {
       method: 'POST',
       body: formData
     });
@@ -995,7 +997,7 @@ async function performEditPdf() {
       formData.append('image_width', imageWidth);
     }
 
-    const response = await fetch('/api/edit-pdf', {
+    const response = await fetch(`${API_BASE_URL}/api/edit-pdf`, {
       method: 'POST',
       body: formData
     });
@@ -1095,7 +1097,7 @@ async function performImageConvert() {
     formData.append('file', file);
     formData.append('output_format', format);
     
-    const response = await fetch('/api/image-convert', {
+    const response = await fetch(`${API_BASE_URL}/api/image-convert`, {
       method: 'POST',
       body: formData
     });
@@ -1164,7 +1166,7 @@ async function performImageToPdf() {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await fetch('/api/image-to-pdf', {
+    const response = await fetch(`${API_BASE_URL}/api/image-to-pdf`, {
       method: 'POST',
       body: formData
     });
