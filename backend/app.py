@@ -45,14 +45,6 @@ except ImportError:
     logger.warning("[BOOT] Pillow not installed - Image tools will not be available")
 
 try:
-    import pikepdf
-    PIKEPDF_AVAILABLE = True
-    logger.info("[BOOT] pikepdf successfully loaded - PDF compression available")
-except ImportError:
-    PIKEPDF_AVAILABLE = False
-    logger.warning("[BOOT] pikepdf not installed - advanced PDF compression unavailable")
-
-try:
     import fitz
     FITZ_AVAILABLE = True
     logger.info("[BOOT] PyMuPDF successfully loaded - PDF rendering available")
@@ -408,32 +400,7 @@ def _compress_pdf_file(input_path, output_path, target_size_kb):
         finally:
             doc.close()
 
-    # Stage 1: Optimize PDF streams and object streams with pikepdf.
-    if PIKEPDF_AVAILABLE:
-        try:
-            with pikepdf.open(working_input) as pdf:
-                pdf.save(
-                    temp_output,
-                    static_id=True,
-                    preserve_pdfa=False,
-                    compress_streams=True,
-                    recompress_flate=True,
-                    object_stream_mode=pikepdf.ObjectStreamMode.generate,
-                    deterministic_id=True,
-                )
-
-            best_size = os.path.getsize(temp_output)
-            logger.info(f"[PDF COMPRESS] pikepdf optimized size: {best_size} bytes for target {target_size_kb} KB")
-
-            if best_size <= target_bytes:
-                os.replace(temp_output, output_path)
-                return True, output_path, best_size, True
-
-            working_input = temp_output
-        except Exception as e:
-            logger.warning(f"[PDF COMPRESS] pikepdf optimization failed: {str(e)}")
-
-    # Stage 2: Rasterize pages at progressively lower DPI if the target is still not reached.
+    # Rasterize pages at progressively lower DPI if the target is still not reached.
     if FITZ_AVAILABLE and IMAGE_TOOLS_AVAILABLE:
         dpi_candidates = [150, 120, 96, 72, 60, 48, 36, 24]
 
