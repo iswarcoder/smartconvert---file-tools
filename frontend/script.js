@@ -7,7 +7,7 @@
 // GLOBAL STATE
 // ============================================
 
-const API_BASE_URL = 'https://smartconvert-file-tools.onrender.com';
+const API_URL = 'https://smartconvert-backend.onrender.com';
 
 const platformState = {
   currentTool: 'dashboard',
@@ -119,7 +119,7 @@ const FALLBACK_TOOLS = [
 
 async function fetchAvailableTools() {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/tools`);
+    const response = await fetch(`${API_URL}/api/tools`);
     const data = await response.json();
     
     if (data.status === 'success' && data.tools && data.tools.length > 0) {
@@ -548,25 +548,50 @@ async function performConversion() {
   showProgress('convert', 20, '📤 Uploading file...');
   
   try {
-    // Upload file
     const formData = new FormData();
     formData.append('file', file);
-    
-    const uploadResponse = await fetch(`${API_BASE_URL}/api/upload`, {
+    formData.append('output_format', format);
+
+    const directResponse = await fetch(`${API_URL}/convert`, {
       method: 'POST',
       body: formData
     });
-    
-    const uploadData = await uploadResponse.json();
-    
-    if (!uploadResponse.ok) {
-      throw new Error(uploadData.message || uploadData.error || 'Upload failed');
+
+    const directData = await directResponse.json().catch(() => ({}));
+
+    if (directResponse.ok && directData.download_url) {
+      showProgress('convert', 100, '✅ Conversion complete!');
+
+      setTimeout(() => {
+        hideProgress('convert');
+        showToast('✅ File converted successfully!', 'success');
+
+        openDownloadInNewTab(directData.download_url);
+        document.getElementById('convertDownloadBtn').style.display = 'block';
+        document.getElementById('convertDownloadBtn').onclick = () => openDownloadInNewTab(directData.download_url);
+
+        addConversionToHistory(file.name, 'Convert', directData.output_filename || file.name);
+        clearConvertSelection();
+      }, 500);
+
+      return;
     }
-    
+
+    // Fallback to the existing backend contract for compatibility.
     showProgress('convert', 60, '⚙️ Converting file...');
-    
-    // Convert file
-    const convertResponse = await fetch(`${API_BASE_URL}/api/convert`, {
+
+    const uploadResponse = await fetch(`${API_URL}/api/upload`, {
+      method: 'POST',
+      body: formData
+    });
+
+    const uploadData = await uploadResponse.json().catch(() => ({}));
+
+    if (!uploadResponse.ok) {
+      throw new Error(uploadData.error || uploadData.message || directData.error || directData.message || 'Upload failed');
+    }
+
+    const convertResponse = await fetch(`${API_URL}/api/convert`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -574,28 +599,32 @@ async function performConversion() {
         output_format: format
       })
     });
-    
-    const convertData = await convertResponse.json();
-    
+
+    const convertData = await convertResponse.json().catch(() => ({}));
+
     if (!convertResponse.ok) {
-      throw new Error(convertData.message || convertData.error || 'Conversion failed');
+      throw new Error(convertData.error || convertData.message || directData.error || directData.message || 'Conversion failed');
     }
-    
+
     showProgress('convert', 100, '✅ Conversion complete!');
-    
+
     setTimeout(() => {
       hideProgress('convert');
       showToast('✅ File converted successfully!', 'success');
-      
-      document.getElementById('convertDownloadBtn').style.display = 'block';
-      document.getElementById('convertDownloadBtn').onclick = () => downloadFile(convertData.download_url);
-      
-      addConversionToHistory(file.name, 'Convert', convertData.output_filename);
+
+      if (convertData.download_url) {
+        openDownloadInNewTab(convertData.download_url);
+        document.getElementById('convertDownloadBtn').style.display = 'block';
+        document.getElementById('convertDownloadBtn').onclick = () => openDownloadInNewTab(convertData.download_url);
+      }
+
+      addConversionToHistory(file.name, 'Convert', convertData.output_filename || file.name);
       clearConvertSelection();
     }, 500);
     
   } catch (error) {
     showProgress('convert', 0, '❌ ' + error.message);
+    alert(error.message);
     showToast('❌ Error: ' + error.message, 'error');
   } finally {
     document.getElementById('convertBtn').disabled = false;
@@ -683,7 +712,7 @@ async function performMergePdf() {
       formData.append('files', file);
     });
     
-    const response = await fetch(`${API_BASE_URL}/api/pdf-merge`, {
+    const response = await fetch(`${API_URL}/api/pdf-merge`, {
       method: 'POST',
       body: formData
     });
@@ -767,7 +796,7 @@ async function performSplitPdf() {
     formData.append('file', file);
     formData.append('pages', pages);
     
-    const response = await fetch(`${API_BASE_URL}/api/split-pdf`, {
+    const response = await fetch(`${API_URL}/api/split-pdf`, {
       method: 'POST',
       body: formData
     });
@@ -853,7 +882,7 @@ async function performCompressPdf() {
     formData.append('file', file);
       formData.append('target_size_kb', targetSize);
     
-    const response = await fetch(`${API_BASE_URL}/api/compress-pdf`, {
+    const response = await fetch(`${API_URL}/api/compress-pdf`, {
       method: 'POST',
       body: formData
     });
@@ -997,7 +1026,7 @@ async function performEditPdf() {
       formData.append('image_width', imageWidth);
     }
 
-    const response = await fetch(`${API_BASE_URL}/api/edit-pdf`, {
+    const response = await fetch(`${API_URL}/api/edit-pdf`, {
       method: 'POST',
       body: formData
     });
@@ -1097,7 +1126,7 @@ async function performImageConvert() {
     formData.append('file', file);
     formData.append('output_format', format);
     
-    const response = await fetch(`${API_BASE_URL}/api/image-convert`, {
+    const response = await fetch(`${API_URL}/api/image-convert`, {
       method: 'POST',
       body: formData
     });
@@ -1166,7 +1195,7 @@ async function performImageToPdf() {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await fetch(`${API_BASE_URL}/api/image-to-pdf`, {
+    const response = await fetch(`${API_URL}/api/image-to-pdf`, {
       method: 'POST',
       body: formData
     });
@@ -1365,13 +1394,18 @@ function hideProgress(tool) {
 }
 
 function downloadFile(url, customFilename = '') {
+  openDownloadInNewTab(url, customFilename);
+  showToast('⬇️ Download opened in a new tab', 'success');
+}
+
+function openDownloadInNewTab(url) {
   const link = document.createElement('a');
   link.href = url;
-  link.download = customFilename || url.split('/').pop();
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  showToast('⬇️ Download started', 'success');
 }
 
 function showToast(message, type = 'info') {
