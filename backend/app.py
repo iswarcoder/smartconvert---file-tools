@@ -9,6 +9,7 @@ from werkzeug.utils import secure_filename
 import io
 import os
 import shutil
+import requests
 import time
 import logging
 from pathlib import Path
@@ -62,6 +63,7 @@ except ImportError:
 # Configuration
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
 OUTPUT_FOLDER = os.path.join(os.path.dirname(__file__), 'outputs')
+API_KEY = os.environ.get("CLOUDCONVERT_API_KEY")
 
 # Supported input formats (detected from uploaded file)
 SUPPORTED_INPUT_FORMATS = {'docx', 'doc', 'odt', 'pptx', 'ppt', 'odp', 'xlsx', 'xls', 'ods', 'pdf'}
@@ -96,6 +98,62 @@ def generate_unique_filename(original_filename, suffix=''):
     if suffix:
         return f"{base_name}_{suffix}_{unique_id}.{extension}"
     return f"{base_name}_{unique_id}.{extension}"
+
+def convert_docx_to_pdf(file_path):
+    if not API_KEY:
+        raise ValueError('CLOUDCONVERT_API_KEY is not configured')
+
+    headers = {
+        'Authorization': f'Bearer {API_KEY}',
+        'Content-Type': 'application/json'
+    }
+
+    job = {
+        'tasks': {
+            'import-file': {'operation': 'import/upload'},
+            'convert-file': {
+                'operation': 'convert',
+                'input': 'import-file',
+                'output_format': 'pdf'
+            },
+            'export-file': {'operation': 'export/url', 'input': 'convert-file'}
+        }
+    }
+
+    res = requests.post('https://api.cloudconvert.com/v2/jobs', json=job, headers=headers)
+    res.raise_for_status()
+    res_data = res.json()
+
+    upload_task = next((t for t in res_data['data']['tasks'] if t['name'] == 'import-file'), None)
+    if not upload_task:
+        raise ValueError('CloudConvert upload task was not created')
+
+    upload_url = upload_task['result']['form']['url']
+    params = upload_task['result']['form']['parameters']
+
+    with open(file_path, 'rb') as file_handle:
+        upload_response = requests.post(upload_url, data=params, files={'file': file_handle})
+        upload_response.raise_for_status()
+
+    job_id = res_data['data']['id']
+
+    for _ in range(12):
+        time.sleep(5)
+        result = requests.get(f'https://api.cloudconvert.com/v2/jobs/{job_id}', headers=headers)
+        result.raise_for_status()
+        result_data = result.json()
+
+        export_task = next((t for t in result_data['data']['tasks'] if t['name'] == 'export-file'), None)
+        if export_task and export_task.get('status') == 'finished':
+            files = export_task.get('result', {}).get('files', [])
+            if files:
+                return files[0]['url']
+
+        failed_task = next((t for t in result_data['data']['tasks'] if t.get('status') == 'error'), None)
+        if failed_task:
+            raise RuntimeError(f"CloudConvert task failed: {failed_task.get('message', 'Unknown error')}")
+
+    raise TimeoutError('CloudConvert conversion timed out')
 
 def get_available_tools():
     """Return list of available tools based on installed dependencies"""
@@ -654,16 +712,25 @@ def convert_file():
         
         logger.info(f"[CONVERSION STARTING] {input_format.upper()} -> {output_format.upper()}")
 
-        # Document conversions are disabled on Render, so return a safe JSON error.
-        unsupported_success, error_payload = _unsupported_document_conversion(input_format, output_format)
-        if not unsupported_success:
-            logger.warning(f"[CONVERSION BLOCKED] {error_payload['error']}")
-            return jsonify(error_payload), 400
+        if input_format == 'docx' and output_format == 'pdf':
+            try:
+                download_url = convert_docx_to_pdf(input_path)
+                logger.info(f"[CONVERSION SUCCESS] CloudConvert produced PDF for {filename}")
+                return jsonify({
+                    'status': 'success',
+                    'message': 'File converted to PDF successfully',
+                    'download_url': download_url
+                }), 200
+            except Exception as e:
+                logger.error(f"[CLOUDCONVERT ERROR] {str(e)}")
+                return jsonify({
+                    'status': 'error',
+                    'message': str(e)
+                }), 400
 
-        # This branch is intentionally unreachable for Render compatibility.
         return jsonify({
             'status': 'error',
-            'message': 'Document conversion is not supported on this server'
+            'message': 'Only DOCX to PDF conversion is supported on this server'
         }), 400
     
     except Exception as e:
