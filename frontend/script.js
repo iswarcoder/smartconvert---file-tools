@@ -560,7 +560,7 @@ async function performConversion() {
     const uploadData = await uploadResponse.json();
     
     if (!uploadResponse.ok) {
-      throw new Error(uploadData.message || 'Upload failed');
+      throw new Error(uploadData.message || uploadData.error || 'Upload failed');
     }
     
     showProgress('convert', 60, '⚙️ Converting file...');
@@ -578,7 +578,7 @@ async function performConversion() {
     const convertData = await convertResponse.json();
     
     if (!convertResponse.ok) {
-      throw new Error(convertData.message || 'Conversion failed');
+      throw new Error(convertData.message || convertData.error || 'Conversion failed');
     }
     
     showProgress('convert', 100, '✅ Conversion complete!');

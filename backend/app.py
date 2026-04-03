@@ -9,7 +9,6 @@ from werkzeug.utils import secure_filename
 import io
 import os
 import shutil
-import subprocess
 import time
 import logging
 from pathlib import Path
@@ -63,50 +62,6 @@ except ImportError:
 # Configuration
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), 'uploads')
 OUTPUT_FOLDER = os.path.join(os.path.dirname(__file__), 'outputs')
-
-# ============================================
-# CONVERSION RULES - ONLY THESE ARE ALLOWED
-# ============================================
-
-CONVERSION_RULES = {
-    # Documents
-    ('docx', 'pdf'): 'writer_pdf_Export',
-    ('docx', 'txt'): 'Text',
-    ('doc', 'pdf'): 'writer_pdf_Export',
-    ('doc', 'txt'): 'Text',
-    ('doc', 'docx'): 'MS Word 2007 XML',
-    ('odt', 'docx'): 'MS Word 2007 XML',
-    ('odt', 'pdf'): 'writer_pdf_Export',
-    
-    # Presentations
-    ('pptx', 'pdf'): 'impress_pdf_Export',
-    ('pptx', 'odp'): '',
-    ('ppt', 'pdf'): 'impress_pdf_Export',
-    ('ppt', 'pptx'): 'MS PowerPoint 2007 XML',
-    ('ppt', 'odp'): '',
-    ('odp', 'pptx'): 'MS PowerPoint 2007 XML',
-    ('odp', 'pdf'): 'impress_pdf_Export',
-    
-    # Spreadsheets
-    ('xlsx', 'pdf'): 'calc_pdf_Export',
-    ('xlsx', 'csv'): '',
-    ('xls', 'pdf'): 'calc_pdf_Export',
-    ('xls', 'csv'): '',
-    ('xls', 'xlsx'): 'MS Excel 2007 XML',
-    ('ods', 'xlsx'): 'MS Excel 2007 XML',
-    ('ods', 'pdf'): 'calc_pdf_Export',
-    ('ods', 'csv'): '',
-
-    # PDF Conversions & 2-Step Conversions
-    ('pdf', 'docx'): 'writer_pdf_import',
-    ('pdf', 'pptx'): 'impress_pdf_import',
-    ('ppt', 'docx'): '2STEP',
-    ('pptx', 'docx'): '2STEP',
-    ('odp', 'docx'): '2STEP',
-    ('docx', 'pptx'): '2STEP',
-    ('doc', 'pptx'): '2STEP',
-    ('odt', 'pptx'): '2STEP',
-}
 
 # Supported input formats (detected from uploaded file)
 SUPPORTED_INPUT_FORMATS = {'docx', 'doc', 'odt', 'pptx', 'ppt', 'odp', 'xlsx', 'xls', 'ods', 'pdf'}
@@ -201,78 +156,15 @@ def get_available_tools():
     return tools
 
 # ============================================
-# LibreOffice Conversion Functions
+# Document Conversion Fallbacks
 # ============================================
 
-def _convert_with_libreoffice(input_path, output_format):
-    """Convert file using LibreOffice command line"""
-    try:
-        conversion_key = (get_file_extension(input_path), output_format)
-        
-        if conversion_key not in CONVERSION_RULES:
-            return False, f"Conversion from {get_file_extension(input_path).upper()} to {output_format.upper()} is not supported"
-        
-        filter_opt = CONVERSION_RULES[conversion_key]
-        output_dir = OUTPUT_FOLDER
-        
-        if filter_opt == '2STEP':
-            # Step 1: Convert original file to PDF
-            step1_cmd = [
-                'soffice', '--headless', '--convert-to', 'pdf', '--outdir', output_dir, input_path
-            ]
-            logger.info(f"[LIBREOFFICE 2STEP - PART 1] Running: {' '.join(step1_cmd)}")
-            res1 = subprocess.run(step1_cmd, capture_output=True, text=True, timeout=120)
-            if res1.returncode != 0:
-                 return False, f"Step 1 (to PDF) failed: {res1.stderr}"
-            
-            intermediate_pdf = os.path.join(output_dir, f"{os.path.splitext(os.path.basename(input_path))[0]}.pdf")
-            
-            # Step 2: Convert PDF to destination format
-            pdf_infilter = 'writer_pdf_import' if output_format in ['docx', 'doc', 'odt'] else 'impress_pdf_import'
-            
-            step2_cmd = [
-                'soffice', '--headless', '--infilter=' + pdf_infilter, '--convert-to', output_format, '--outdir', output_dir, intermediate_pdf
-            ]
-            logger.info(f"[LIBREOFFICE 2STEP - PART 2] Running: {' '.join(step2_cmd)}")
-            res2 = subprocess.run(step2_cmd, capture_output=True, text=True, timeout=120)
-            if res2.returncode != 0:
-                if os.path.exists(intermediate_pdf): os.remove(intermediate_pdf)
-                return False, f"Step 2 ({output_format}) failed: {res2.stderr}"
-                
-            if os.path.exists(intermediate_pdf): os.remove(intermediate_pdf)
-        else:
-            # Build LibreOffice command
-            cmd = ['soffice', '--headless']
-            if filter_opt and filter_opt.endswith('_import'):
-                cmd.append(f'--infilter={filter_opt}')
-                
-            cmd.extend(['--convert-to', output_format, '--outdir', output_dir, input_path])
-            
-            logger.info(f"[LIBREOFFICE] Running: {' '.join(cmd)}")
-            
-            # Run conversion
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            
-            if result.returncode != 0:
-                error = result.stderr if result.stderr else "Unknown error"
-                logger.error(f"[LIBREOFFICE ERROR] {error}")
-                return False, f"LibreOffice conversion failed: {error}"
-        
-        # Find the converted file
-        base_name = os.path.splitext(os.path.basename(input_path))[0]
-        output_file = os.path.join(output_dir, f"{base_name}.{output_format}")
-        
-        if not os.path.exists(output_file):
-            return False, "Output file was not created"
-        
-        logger.info(f"[LIBREOFFICE SUCCESS] Converted to: {output_file}")
-        return True, output_file
-        
-    except subprocess.TimeoutExpired:
-        return False, "Conversion timeout (took too long)"
-    except Exception as e:
-        logger.error(f"[CONVERSION ERROR] {str(e)}")
-        return False, str(e)
+def _unsupported_document_conversion(input_format, output_format):
+    """Return a safe error response for unsupported document conversions on Render."""
+    if input_format == 'docx' and output_format == 'pdf':
+        return False, {'error': 'DOCX to PDF conversion is not supported on this server'}
+
+    return False, {'error': 'Document conversion is not supported on this server'}
 
 # ============================================
 # PDF Functions (if PyPDF2 is available)
@@ -760,41 +652,19 @@ def convert_file():
                 'message': f'Input format {input_format.upper()} is not supported. Supported: {supported}'
             }), 400
         
-        # Check if output format is supported
-        conversion_key = (input_format, output_format)
-        if conversion_key not in CONVERSION_RULES:
-            logger.warning(f"[VALIDATION] Unsupported conversion: {input_format} -> {output_format}")
-            return jsonify({
-                'status': 'error',
-                'message': f'Conversion from {input_format.upper()} to {output_format.upper()} is not supported'
-            }), 400
-        
         logger.info(f"[CONVERSION STARTING] {input_format.upper()} -> {output_format.upper()}")
-        
-        # Perform conversion using LibreOffice
-        success, result = _convert_with_libreoffice(input_path, output_format)
-        
-        if not success:
-            logger.error(f"[CONVERSION FAILED] {result}")
-            return jsonify({
-                'status': 'error',
-                'message': result
-            }), 400
-        
-        output_filename = os.path.basename(result)
-        file_size = os.path.getsize(result)
-        download_url = f'/api/download/{output_filename}'
-        
-        logger.info(f"[CONVERSION SUCCESS] File: {output_filename}, Size: {file_size} bytes")
-        
+
+        # Document conversions are disabled on Render, so return a safe JSON error.
+        unsupported_success, error_payload = _unsupported_document_conversion(input_format, output_format)
+        if not unsupported_success:
+            logger.warning(f"[CONVERSION BLOCKED] {error_payload['error']}")
+            return jsonify(error_payload), 400
+
+        # This branch is intentionally unreachable for Render compatibility.
         return jsonify({
-            'status': 'success',
-            'message': f'File converted to {output_format.upper()} successfully',
-            'download_url': download_url,
-            'output_filename': output_filename,
-            'file_size': file_size,
-            'format': output_format.upper()
-        }), 200
+            'status': 'error',
+            'message': 'Document conversion is not supported on this server'
+        }), 400
     
     except Exception as e:
         logger.error(f"[CONVERSION ERROR] {str(e)}")
