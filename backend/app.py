@@ -92,69 +92,84 @@ def generate_unique_filename(original_filename, suffix=''):
     return f"{base_name}_{unique_id}.{extension}"
 
 def convert_docx_to_pdf(file_path):
-    if not API_KEY:
-        raise ValueError('API key error')
-
     headers = {
         "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json"
     }
 
-    job = {
-        'tasks': {
-            'import-file': {'operation': 'import/upload'},
-            'convert-file': {
-                'operation': 'convert',
-                'input': 'import-file',
-                'output_format': 'pdf'
+    job_data = {
+        "tasks": {
+            "import-my-file": {"operation": "import/upload"},
+            "convert-my-file": {
+                "operation": "convert",
+                "input": "import-my-file",
+                "output_format": "pdf"
             },
-            'export-file': {'operation': 'export/url', 'input': 'convert-file'}
+            "export-my-file": {
+                "operation": "export/url",
+                "input": "convert-my-file"
+            }
         }
     }
 
-    try:
-        res = requests.post('https://api.cloudconvert.com/v2/jobs', json=job, headers=headers, timeout=60)
-        res.raise_for_status()
-        res_data = res.json()
-    except requests.RequestException as exc:
-        raise RuntimeError(f'CloudConvert request failed: {exc}') from exc
+    response = requests.post(
+        "https://api.cloudconvert.com/v2/jobs",
+        json=job_data,
+        headers=headers
+    )
+    print("CloudConvert response:", response.text)
 
-    upload_task = next((t for t in res_data['data']['tasks'] if t['name'] == 'import-file'), None)
+    if response.status_code != 201:
+        return None, response.text
+
+    response_data = response.json()
+    upload_task = next(
+        (task for task in response_data.get("data", {}).get("tasks", []) if task.get("name") == "import-my-file"),
+        None
+    )
+
     if not upload_task:
-        raise ValueError('CloudConvert upload task was not created')
+        raise RuntimeError("CloudConvert upload task was not created")
 
-    upload_url = upload_task['result']['form']['url']
-    params = upload_task['result']['form']['parameters']
+    upload_url = upload_task["result"]["form"]["url"]
+    upload_parameters = upload_task["result"]["form"]["parameters"]
 
-    try:
-        with open(file_path, 'rb') as file_handle:
-            upload_response = requests.post(upload_url, data=params, files={'file': file_handle}, timeout=60)
-            upload_response.raise_for_status()
-    except requests.RequestException as exc:
-        raise RuntimeError(f'CloudConvert upload failed: {exc}') from exc
+    with open(file_path, "rb") as file_handle:
+        upload_response = requests.post(
+            upload_url,
+            data=upload_parameters,
+            files={"file": file_handle}
+        )
 
-    job_id = res_data['data']['id']
+    if upload_response.status_code not in (200, 201, 204):
+        return None, f"CloudConvert file upload failed: {upload_response.text}"
 
-    for _ in range(12):
+    job_id = response_data["data"]["id"]
+
+    for _ in range(24):
         time.sleep(5)
-        try:
-            result = requests.get(f'https://api.cloudconvert.com/v2/jobs/{job_id}', headers=headers, timeout=60)
-            result.raise_for_status()
-            result_data = result.json()
-        except requests.RequestException as exc:
-            raise RuntimeError(f'CloudConvert status check failed: {exc}') from exc
+        job_response = requests.get(
+            f"https://api.cloudconvert.com/v2/jobs/{job_id}",
+            headers=headers
+        )
 
-        export_task = next((t for t in result_data['data']['tasks'] if t['name'] == 'export-file'), None)
-        if export_task and export_task.get('status') == 'finished':
-            files = export_task.get('result', {}).get('files', [])
-            if files:
-                return files[0]['url']
+        if job_response.status_code != 200:
+            return None, f"CloudConvert job status failed: {job_response.text}"
 
-        failed_task = next((t for t in result_data['data']['tasks'] if t.get('status') == 'error'), None)
+        job_data = job_response.json()
+        tasks = job_data.get("data", {}).get("tasks", [])
+
+        failed_task = next((task for task in tasks if task.get("status") == "error"), None)
         if failed_task:
-            raise RuntimeError(f"CloudConvert task failed: {failed_task.get('message', 'Unknown error')}")
+            return None, f"CloudConvert task failed: {failed_task.get('message', 'Unknown error')}"
 
-    raise TimeoutError('CloudConvert conversion timed out')
+        export_task = next((task for task in tasks if task.get("name") == "export-my-file"), None)
+        if export_task and export_task.get("status") == "finished":
+            files = export_task.get("result", {}).get("files", [])
+            if files:
+                return files[0]["url"], None
+
+    return None, "CloudConvert conversion timed out"
 
 def get_available_tools():
     """Return list of available tools based on installed dependencies"""
@@ -655,6 +670,11 @@ def convert_file():
             uploaded_file.save(input_path)
         
         logger.info(f"[PARAMS] Filename: {filename}, Target format: {output_format}")
+
+        if not API_KEY:
+            return jsonify({"error": "API key missing"}), 500
+
+        print("API KEY LOADED:", API_KEY[:10])
         
         # Validate inputs
         if not filename or not output_format:
@@ -691,22 +711,20 @@ def convert_file():
 
         if input_format == 'docx' and output_format == 'pdf':
             try:
-                download_url = convert_docx_to_pdf(input_path)
+                download_url, error_message = convert_docx_to_pdf(input_path)
+                if error_message:
+                    return jsonify({
+                        "error": "CloudConvert API failed",
+                        "details": error_message
+                    }), 500
                 logger.info(f"[CONVERSION SUCCESS] CloudConvert produced PDF for {filename}")
-                return jsonify({
-                    'status': 'success',
-                    'message': 'File converted to PDF successfully',
-                    'download_url': download_url
-                }), 200
-            except ValueError as exc:
-                error_message = str(exc)
-                logger.error(f"[CLOUDCONVERT ERROR] {error_message}")
-                if error_message == 'API key error':
-                    return jsonify({'error': 'API key error'}), 500
-                return jsonify({'error': error_message}), 500
+                return jsonify({"download_url": download_url})
             except Exception as e:
                 logger.error(f"[CLOUDCONVERT ERROR] {str(e)}")
-                return jsonify({'error': str(e)}), 500
+                return jsonify({
+                    "error": "CloudConvert API failed",
+                    "details": str(e)
+                }), 500
 
         return jsonify({'error': 'Only DOCX to PDF conversion is supported on this server'}), 400
     
