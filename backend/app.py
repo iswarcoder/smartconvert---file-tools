@@ -1,5 +1,4 @@
 import os
-import tempfile
 import time
 
 import requests
@@ -23,7 +22,7 @@ def tools():
     return jsonify({"message": "API working"})
 
 
-def create_cloudconvert_download_url(file_path):
+def create_cloudconvert_download_url(uploaded_file):
     if not CLOUDCONVERT_API_KEY:
         return None, {"error": "API key missing"}
 
@@ -63,8 +62,7 @@ def create_cloudconvert_download_url(file_path):
         return None, {"error": "CloudConvert failed", "details": response.text}
 
     response_data = response.json()
-    tasks = response_data.get("data", {}).get("tasks", [])
-    upload_task = next((task for task in tasks if task.get("name") == "import-1"), None)
+    upload_task = next((t for t in response_data.get("data", {}).get("tasks", []) if t.get("name") == "import-1"), None)
     if not upload_task:
         return None, {"error": "CloudConvert failed", "details": "Upload task not found"}
 
@@ -74,13 +72,13 @@ def create_cloudconvert_download_url(file_path):
     if not upload_url:
         return None, {"error": "CloudConvert failed", "details": "Upload URL missing"}
 
-    with open(file_path, "rb") as file_handle:
-        upload_response = requests.post(
-            upload_url,
-            data=upload_parameters,
-            files={"file": file_handle},
-            timeout=60,
-        )
+    uploaded_file.stream.seek(0)
+    upload_response = requests.post(
+        upload_url,
+        data=upload_parameters,
+        files={"file": (uploaded_file.filename, uploaded_file.stream)},
+        timeout=60,
+    )
 
     if upload_response.status_code not in (200, 201, 204):
         print("CloudConvert error:", upload_response.text)
@@ -100,19 +98,18 @@ def create_cloudconvert_download_url(file_path):
             print("CloudConvert error:", job_response.text)
             return None, {"error": "CloudConvert failed", "details": job_response.text}
 
-        job_data_response = job_response.json()
-        job_tasks = job_data_response.get("data", {}).get("tasks", [])
-
-        failed_task = next((task for task in job_tasks if task.get("status") == "error"), None)
-        if failed_task:
-            print("CloudConvert error:", failed_task)
-            return None, {"error": "CloudConvert failed", "details": failed_task.get("message", "Unknown error")}
-
-        export_task = next((task for task in job_tasks if task.get("name") == "export-1"), None)
-        if export_task and export_task.get("status") == "finished":
+        status = job_response.json()
+        if status.get("data", {}).get("status") == "finished":
+            export_task = next((t for t in status.get("data", {}).get("tasks", []) if t.get("name") == "export-1"), None)
+            if not export_task:
+                print("CloudConvert error:", job_response.text)
+                return None, {"error": "CloudConvert failed", "details": "Export task not found"}
             files = export_task.get("result", {}).get("files", [])
             if files:
                 return files[0].get("url"), None
+        elif status.get("data", {}).get("status") == "error":
+            print("CloudConvert error:", job_response.text)
+            return None, {"error": "CloudConvert failed", "details": job_response.text}
 
     return None, {
         "error": "CloudConvert failed",
@@ -122,7 +119,6 @@ def create_cloudconvert_download_url(file_path):
 
 @app.route("/api/convert", methods=["POST"])
 def convert_file():
-    temp_path = None
     try:
         if not CLOUDCONVERT_API_KEY:
             return jsonify({"error": "API key missing"}), 500
@@ -140,11 +136,7 @@ def convert_file():
         if os.path.splitext(filename)[1].lstrip(".").lower() != "docx":
             return jsonify({"error": "Only DOCX to PDF conversion is supported"}), 400
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix="_" + filename) as temp_file:
-            uploaded_file.save(temp_file)
-            temp_path = temp_file.name
-
-        download_url, error = create_cloudconvert_download_url(temp_path)
+        download_url, error = create_cloudconvert_download_url(uploaded_file)
         if error:
             return jsonify(error), 500
 
@@ -156,12 +148,6 @@ def convert_file():
     except Exception as exc:
         print("ERROR:", str(exc))
         return jsonify({"error": str(exc)}), 500
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except OSError:
-                pass
 
 
 if __name__ == "__main__":
