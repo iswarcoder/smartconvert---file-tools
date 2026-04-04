@@ -565,7 +565,10 @@ async function performConversion() {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      throw new Error(data.error || data.message || data.details || 'Conversion failed');
+      const errorMessage = data.details
+        ? `${data.error || data.message || 'Conversion failed'}: ${data.details}`
+        : (data.error || data.message || 'Conversion failed');
+      throw new Error(errorMessage);
     }
 
     if (!data.download_url) {

@@ -4,7 +4,7 @@ import time
 import requests
 from flask import Flask, jsonify, request
 from flask_cors import CORS
-from werkzeug.utils import secure_filename
+from werkzeug.exceptions import BadRequestKeyError
 
 app = Flask(__name__)
 CORS(app)
@@ -22,7 +22,7 @@ def tools():
     return jsonify({"message": "API working"})
 
 
-def create_cloudconvert_download_url(uploaded_file):
+def create_cloudconvert_download_url(uploaded_file, input_format):
     if not CLOUDCONVERT_API_KEY:
         return None, {"error": "API key missing"}
 
@@ -39,7 +39,7 @@ def create_cloudconvert_download_url(uploaded_file):
             "convert-1": {
                 "operation": "convert",
                 "input": "import-1",
-                "input_format": "docx",
+                "input_format": input_format,
                 "output_format": "pdf",
             },
             "export-1": {
@@ -125,23 +125,24 @@ def convert_file():
 
         print("API KEY:", CLOUDCONVERT_API_KEY[:10] if CLOUDCONVERT_API_KEY else "NOT FOUND")
 
-        if "file" not in request.files:
-            return jsonify({"error": "File is required"}), 400
-
         uploaded_file = request.files["file"]
-        if not uploaded_file.filename:
-            return jsonify({"error": "File is required"}), 400
+        if not uploaded_file:
+            return jsonify({"error": "No file uploaded"}), 400
 
-        filename = secure_filename(uploaded_file.filename)
-        if os.path.splitext(filename)[1].lstrip(".").lower() != "docx":
-            return jsonify({"error": "Only DOCX to PDF conversion is supported"}), 400
+        filename = uploaded_file.filename
+        input_format = filename.split(".")[-1].lower()
 
-        download_url, error = create_cloudconvert_download_url(uploaded_file)
+        print("Filename:", filename)
+        print("Detected format:", input_format)
+
+        download_url, error = create_cloudconvert_download_url(uploaded_file, input_format)
         if error:
             return jsonify(error), 500
 
         return jsonify({"download_url": download_url}), 200
 
+    except BadRequestKeyError:
+        return jsonify({"error": "No file uploaded"}), 400
     except requests.RequestException as exc:
         print("ERROR:", str(exc))
         return jsonify({"error": str(exc)}), 500
