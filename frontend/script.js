@@ -7,7 +7,7 @@
 // GLOBAL STATE
 // ============================================
 
-const API_URL = 'https://smartconvert-backend.onrender.com';
+const API_URL = 'https://smartconvert-file-tools-1.onrender.com';
 
 const platformState = {
   currentTool: 'dashboard',
