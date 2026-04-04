@@ -10,22 +10,27 @@ from werkzeug.utils import secure_filename
 app = Flask(__name__)
 CORS(app)
 
-API_KEY = os.getenv("CLOUDCONVERT_API_KEY")
+CLOUDCONVERT_API_KEY = os.getenv("CLOUDCONVERT_API_KEY")
 
 
 @app.route("/", methods=["GET"])
 def home():
-    return "Backend is running 🚀"
+    return "Backend running 🚀"
 
 
-def create_cloudconvert_job(file_path):
-    if not API_KEY:
-        return None, "API key missing"
+@app.route("/api/tools", methods=["GET"])
+def tools():
+    return jsonify({"message": "API working"})
 
-    print("API KEY:", API_KEY[:10] if API_KEY else "NOT FOUND")
+
+def create_cloudconvert_download_url(file_path):
+    if not CLOUDCONVERT_API_KEY:
+        return None, {"error": "API key missing"}
+
+    print("API KEY:", CLOUDCONVERT_API_KEY[:10] if CLOUDCONVERT_API_KEY else "NOT FOUND")
 
     headers = {
-        "Authorization": f"Bearer {API_KEY}",
+        "Authorization": f"Bearer {CLOUDCONVERT_API_KEY}",
         "Content-Type": "application/json",
     }
 
@@ -61,7 +66,6 @@ def create_cloudconvert_job(file_path):
     response_data = response.json()
     tasks = response_data.get("data", {}).get("tasks", [])
     upload_task = next((task for task in tasks if task.get("name") == "import-my-file"), None)
-
     if not upload_task:
         return None, {
             "error": "CloudConvert API failed",
@@ -71,7 +75,6 @@ def create_cloudconvert_job(file_path):
     upload_form = upload_task.get("result", {}).get("form", {})
     upload_url = upload_form.get("url")
     upload_parameters = upload_form.get("parameters", {})
-
     if not upload_url:
         return None, {
             "error": "CloudConvert API failed",
@@ -132,19 +135,17 @@ def create_cloudconvert_job(file_path):
 
 @app.route("/api/convert", methods=["POST"])
 def convert_file():
-    if not API_KEY:
+    if not CLOUDCONVERT_API_KEY:
         return jsonify({"error": "API key missing"}), 500
 
-    print("API KEY:", API_KEY[:10] if API_KEY else "NOT FOUND")
+    print("API KEY:", CLOUDCONVERT_API_KEY[:10] if CLOUDCONVERT_API_KEY else "NOT FOUND")
 
     uploaded_file = request.files.get("file")
     if not uploaded_file or not uploaded_file.filename:
         return jsonify({"error": "File is required"}), 400
 
     filename = secure_filename(uploaded_file.filename)
-    input_extension = os.path.splitext(filename)[1].lstrip(".").lower()
-
-    if input_extension != "docx":
+    if os.path.splitext(filename)[1].lstrip(".").lower() != "docx":
         return jsonify({"error": "Only DOCX to PDF conversion is supported"}), 400
 
     temp_path = None
@@ -153,7 +154,7 @@ def convert_file():
             uploaded_file.save(temp_file)
             temp_path = temp_file.name
 
-        download_url, error = create_cloudconvert_job(temp_path)
+        download_url, error = create_cloudconvert_download_url(temp_path)
         if error:
             return jsonify(error), 500
 
@@ -172,4 +173,5 @@ def convert_file():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
