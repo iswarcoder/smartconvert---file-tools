@@ -562,18 +562,16 @@ async function performConversion() {
       body: formData
     });
 
-    const data = await response.json().catch(() => ({}));
-
     if (!response.ok) {
-      const errorMessage = data.details
-        ? `${data.error || data.message || 'Conversion failed'}: ${data.details}`
-        : (data.error || data.message || 'Conversion failed');
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.details
+        ? `${errorData.error || errorData.message || 'Conversion failed'}: ${typeof errorData.details === 'object' ? JSON.stringify(errorData.details) : errorData.details}`
+        : (errorData.error || errorData.message || 'Conversion failed');
       throw new Error(errorMessage);
     }
 
-    if (!data.download_url) {
-      throw new Error('No download URL returned by backend');
-    }
+    const blob = await response.blob();
+    const blobUrl = URL.createObjectURL(blob);
 
     showProgress('convert', 100, 'Done');
 
@@ -581,9 +579,9 @@ async function performConversion() {
       hideProgress('convert');
       showToast('✅ File converted successfully!', 'success');
 
-      openDownloadInNewTab(data.download_url);
+      openDownloadInNewTab(blobUrl);
       document.getElementById('convertDownloadBtn').style.display = 'block';
-      document.getElementById('convertDownloadBtn').onclick = () => openDownloadInNewTab(data.download_url);
+      document.getElementById('convertDownloadBtn').onclick = () => openDownloadInNewTab(blobUrl);
 
       addConversionToHistory(file.name, 'Convert', file.name);
       clearConvertSelection();

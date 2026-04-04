@@ -1,7 +1,8 @@
 import os
+from io import BytesIO
 
 import requests
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
@@ -35,36 +36,48 @@ def convert_docx_to_pdf(uploaded_file):
     response = requests.post(CONVERT_API_URL, files=files, data=data, timeout=120)
     print("ConvertAPI response:", response.text)
 
-    if not response.ok:
+    try:
+        response_data = response.json()
+    except ValueError:
         print("ConvertAPI error:", response.text)
         return None, {
             "error": "ConvertAPI failed",
             "details": response.text,
         }
 
-    try:
-        response_data = response.json()
-    except ValueError:
+    print("ConvertAPI response JSON:", response_data)
+
+    if not response.ok:
+        print("ConvertAPI error:", response_data)
         return None, {
             "error": "ConvertAPI failed",
-            "details": "Invalid JSON returned by ConvertAPI",
+            "details": response_data,
         }
 
     output_files = response_data.get("Files", [])
     if not output_files:
         return None, {
             "error": "ConvertAPI failed",
-            "details": "No output file returned by ConvertAPI",
+            "details": response_data,
         }
 
     download_url = output_files[0].get("Url") or output_files[0].get("url")
     if not download_url:
         return None, {
             "error": "ConvertAPI failed",
-            "details": "Download URL missing in ConvertAPI response",
+            "details": response_data,
         }
 
-    return download_url, None
+    pdf_response = requests.get(download_url, timeout=120)
+    print("ConvertAPI download response:", pdf_response.status_code)
+
+    if not pdf_response.ok:
+        return None, {
+            "error": "ConvertAPI failed",
+            "details": pdf_response.text,
+        }
+
+    return pdf_response.content, None
 
 
 @app.route("/api/convert", methods=["POST"])
@@ -92,11 +105,17 @@ def convert_file():
         if input_format != "docx":
             return jsonify({"error": "Only DOCX to PDF conversion is supported"}), 400
 
-        download_url, error = convert_docx_to_pdf(file)
+        pdf_bytes, error = convert_docx_to_pdf(file)
         if error:
             return jsonify(error), 500
 
-        return jsonify({"download_url": download_url}), 200
+        output_name = f"{filename.rsplit('.', 1)[0]}.pdf"
+        return send_file(
+            BytesIO(pdf_bytes),
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=output_name,
+        )
 
     except requests.RequestException as exc:
         print("ERROR:", str(exc))
