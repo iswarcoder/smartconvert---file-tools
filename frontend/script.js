@@ -25,6 +25,8 @@ const platformState = {
   }
 };
 
+let selectedFile = null;
+
 // ============================================
 // FORMAT MAPPING FOR CONVERSIONS
 // ============================================
@@ -489,6 +491,7 @@ function handleConvertFileSelect(e) {
       return;
     }
     
+    selectedFile = file;
     platformState.selectedFiles.convert = file;
     
     document.getElementById('convertFileName').textContent = file.name;
@@ -536,7 +539,7 @@ function isConvertReady() {
 }
 
 async function performConversion() {
-  const file = platformState.selectedFiles.convert;
+  const file = selectedFile || platformState.selectedFiles.convert;
   const format = document.getElementById('convertFormatSelect').value;
   
   if (!file || !format) {
@@ -545,85 +548,47 @@ async function performConversion() {
   }
   
   document.getElementById('convertBtn').disabled = true;
-  showProgress('convert', 20, '📤 Uploading file...');
+  showProgress('convert', 20, 'Uploading...');
   
   try {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('output_format', format);
+    formData.append('target_format', 'pdf');
 
-    const directResponse = await fetch(`${API_URL}/convert`, {
+    showProgress('convert', 45, 'Converting...');
+
+    const response = await fetch(`${API_URL}/api/convert`, {
       method: 'POST',
       body: formData
     });
 
-    const directData = await directResponse.json().catch(() => ({}));
+    const data = await response.json().catch(() => ({}));
 
-    if (directResponse.ok && directData.download_url) {
-      showProgress('convert', 100, '✅ Conversion complete!');
-
-      setTimeout(() => {
-        hideProgress('convert');
-        showToast('✅ File converted successfully!', 'success');
-
-        openDownloadInNewTab(directData.download_url);
-        document.getElementById('convertDownloadBtn').style.display = 'block';
-        document.getElementById('convertDownloadBtn').onclick = () => openDownloadInNewTab(directData.download_url);
-
-        addConversionToHistory(file.name, 'Convert', directData.output_filename || file.name);
-        clearConvertSelection();
-      }, 500);
-
-      return;
+    if (!response.ok) {
+      throw new Error(data.error || data.message || data.details || 'Conversion failed');
     }
 
-    // Fallback to the existing backend contract for compatibility.
-    showProgress('convert', 60, '⚙️ Converting file...');
-
-    const uploadResponse = await fetch(`${API_URL}/api/upload`, {
-      method: 'POST',
-      body: formData
-    });
-
-    const uploadData = await uploadResponse.json().catch(() => ({}));
-
-    if (!uploadResponse.ok) {
-      throw new Error(uploadData.error || uploadData.message || directData.error || directData.message || 'Upload failed');
+    if (!data.download_url) {
+      throw new Error('No download URL returned by backend');
     }
 
-    const convertResponse = await fetch(`${API_URL}/api/convert`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        filename: uploadData.filename,
-        output_format: format
-      })
-    });
-
-    const convertData = await convertResponse.json().catch(() => ({}));
-
-    if (!convertResponse.ok) {
-      throw new Error(convertData.error || convertData.message || directData.error || directData.message || 'Conversion failed');
-    }
-
-    showProgress('convert', 100, '✅ Conversion complete!');
+    showProgress('convert', 100, 'Done');
 
     setTimeout(() => {
       hideProgress('convert');
       showToast('✅ File converted successfully!', 'success');
 
-      if (convertData.download_url) {
-        openDownloadInNewTab(convertData.download_url);
-        document.getElementById('convertDownloadBtn').style.display = 'block';
-        document.getElementById('convertDownloadBtn').onclick = () => openDownloadInNewTab(convertData.download_url);
-      }
+      openDownloadInNewTab(data.download_url);
+      document.getElementById('convertDownloadBtn').style.display = 'block';
+      document.getElementById('convertDownloadBtn').onclick = () => openDownloadInNewTab(data.download_url);
 
-      addConversionToHistory(file.name, 'Convert', convertData.output_filename || file.name);
+      addConversionToHistory(file.name, 'Convert', file.name);
       clearConvertSelection();
     }, 500);
     
   } catch (error) {
-    showProgress('convert', 0, '❌ ' + error.message);
+    console.error(error);
+    showProgress('convert', 0, '❌ Conversion failed');
     alert(error.message);
     showToast('❌ Error: ' + error.message, 'error');
   } finally {
@@ -632,6 +597,7 @@ async function performConversion() {
 }
 
 function clearConvertSelection() {
+  selectedFile = null;
   platformState.selectedFiles.convert = null;
   document.getElementById('convertFileInput').value = '';
   document.getElementById('convertFormatSelect').value = '';
