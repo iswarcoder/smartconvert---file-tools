@@ -70,11 +70,6 @@ def convert_docx_to_pdf(uploaded_file):
 @app.route("/api/convert", methods=["POST"])
 def convert_file():
     try:
-        if not API_SECRET:
-            return jsonify({"error": "API secret missing"}), 500
-
-        print("API SECRET:", API_SECRET[:10] if API_SECRET else "NOT FOUND")
-
         try:
             file = request.files["file"]
         except KeyError:
@@ -82,6 +77,11 @@ def convert_file():
 
         if not file or not file.filename:
             return jsonify({"error": "No file uploaded"}), 400
+
+        if not API_SECRET:
+            return jsonify({"error": "API secret missing"}), 500
+
+        print("API SECRET:", API_SECRET[:10] if API_SECRET else "NOT FOUND")
 
         filename = file.filename
         input_format = filename.split(".")[-1].lower() if "." in filename else ""
