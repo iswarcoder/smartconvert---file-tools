@@ -26,6 +26,7 @@ const platformState = {
 };
 
 let selectedFile = null;
+let convertDownloadBlobUrl = null;
 
 // ============================================
 // FORMAT MAPPING FOR CONVERSIONS
@@ -571,7 +572,18 @@ async function performConversion() {
     }
 
     const blob = await response.blob();
+    if (convertDownloadBlobUrl) {
+      URL.revokeObjectURL(convertDownloadBlobUrl);
+    }
+
     const blobUrl = URL.createObjectURL(blob);
+    convertDownloadBlobUrl = blobUrl;
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = 'converted.pdf';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 
     showProgress('convert', 100, 'Done');
 
@@ -579,9 +591,15 @@ async function performConversion() {
       hideProgress('convert');
       showToast('✅ File converted successfully!', 'success');
 
-      openDownloadInNewTab(blobUrl);
       document.getElementById('convertDownloadBtn').style.display = 'block';
-      document.getElementById('convertDownloadBtn').onclick = () => openDownloadInNewTab(blobUrl);
+      document.getElementById('convertDownloadBtn').onclick = () => {
+        const repeatLink = document.createElement('a');
+        repeatLink.href = convertDownloadBlobUrl || blobUrl;
+        repeatLink.download = 'converted.pdf';
+        document.body.appendChild(repeatLink);
+        repeatLink.click();
+        document.body.removeChild(repeatLink);
+      };
 
       addConversionToHistory(file.name, 'Convert', file.name);
       clearConvertSelection();
@@ -598,6 +616,11 @@ async function performConversion() {
 }
 
 function clearConvertSelection() {
+  if (convertDownloadBlobUrl) {
+    URL.revokeObjectURL(convertDownloadBlobUrl);
+    convertDownloadBlobUrl = null;
+  }
+
   selectedFile = null;
   platformState.selectedFiles.convert = null;
   document.getElementById('convertFileInput').value = '';
