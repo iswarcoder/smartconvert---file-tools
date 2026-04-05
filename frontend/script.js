@@ -1400,7 +1400,10 @@ function updateHistory() {
     return;
   }
   
-  historyBody.innerHTML = platformState.conversions.map(conv => `
+  historyBody.innerHTML = platformState.conversions.map(conv => {
+    const canDownload = Boolean(conv.downloadFilename || conv.downloadUrl || (conv.outputFilename && conv.tool !== 'Edit PDF'));
+
+    return `
     <div class="history-row">
       <span class="history-col" data-label="File">${conv.displayFilename || conv.filename}</span>
       <span class="history-col" data-label="Tool">${conv.tool}</span>
@@ -1409,12 +1412,15 @@ function updateHistory() {
         <button class="history-edit" onclick="editHistoryFilename(${conv.id})" title="Rename ${conv.displayFilename || conv.filename}">
           ✏️ Edit Name
         </button>
+        ${canDownload ? `
         <button class="history-action" onclick="downloadHistoryFile(${conv.id})" title="Download ${conv.displayFilename || conv.filename}">
           <span class="download-icon">⬇️</span> Download
         </button>
+        ` : ''}
       </div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function downloadHistoryFile(conversionId) {
