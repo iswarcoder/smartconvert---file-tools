@@ -30,6 +30,7 @@ let convertDownloadBlobUrl = null;
 let mergeDownloadBlobUrl = null;
 let splitDownloadBlobUrl = null;
 let compressDownloadBlobUrl = null;
+let imageConvertDownloadBlobUrl = null;
 let imagePdfDownloadBlobUrl = null;
 let loadingRequests = 0;
 
@@ -1192,25 +1193,53 @@ async function performImageConvert() {
     showToast('❌ Please select file and format', 'error');
     return;
   }
+
+  if (!['jpg', 'png'].includes(format)) {
+    showToast('❌ Image output is currently supported only for JPG and PNG', 'error');
+    return;
+  }
+
+  if (imageConvertDownloadBlobUrl) {
+    URL.revokeObjectURL(imageConvertDownloadBlobUrl);
+    imageConvertDownloadBlobUrl = null;
+  }
   
   document.getElementById('imageConvertBtn').disabled = true;
   showProgress('imageConvert', 50, '🖼️ Converting image...');
   
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('output_format', format);
-    
-    const response = await fetch(`${API_URL}/api/image-convert`, {
-      method: 'POST',
-      body: formData
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Conversion failed');
+    const mimeType = format === 'jpg' ? 'image/jpeg' : 'image/png';
+    const imageUrl = URL.createObjectURL(file);
+    const image = await loadImage(imageUrl);
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+
+    if (!context) {
+      URL.revokeObjectURL(imageUrl);
+      throw new Error('Canvas conversion is not supported in this browser');
     }
+
+    canvas.width = image.naturalWidth || image.width;
+    canvas.height = image.naturalHeight || image.height;
+    context.drawImage(image, 0, 0);
+
+    showProgress('imageConvert', 80, '🖼️ Rendering output...');
+
+    const blob = await new Promise((resolve, reject) => {
+      canvas.toBlob((result) => {
+        if (!result) {
+          reject(new Error('Image conversion failed'));
+          return;
+        }
+
+        resolve(result);
+      }, mimeType, format === 'jpg' ? 0.92 : undefined);
+    });
+
+    URL.revokeObjectURL(imageUrl);
+
+    const blobUrl = URL.createObjectURL(blob);
+    const safeName = `${file.name.replace(/\.[^.]+$/, '')}.${format}`;
     
     showProgress('imageConvert', 100, '✅ Conversion complete!');
     
@@ -1219,9 +1248,15 @@ async function performImageConvert() {
       showToast('✅ Image converted successfully!', 'success');
       
       document.getElementById('imageConvertDownloadBtn').style.display = 'block';
-      document.getElementById('imageConvertDownloadBtn').onclick = () => downloadFile(data.download_url);
+      document.getElementById('imageConvertDownloadBtn').onclick = () => downloadFile(imageConvertDownloadBlobUrl || blobUrl, safeName);
+
+      if (imageConvertDownloadBlobUrl) {
+        URL.revokeObjectURL(imageConvertDownloadBlobUrl);
+      }
+
+      imageConvertDownloadBlobUrl = blobUrl;
       
-      addConversionToHistory(file.name, 'Image Convert', data.output_filename);
+      addConversionToHistory(file.name, 'Image Convert', safeName);
       resetImageConvertForm();
     }, 500);
     
@@ -1240,6 +1275,15 @@ function resetImageConvertForm() {
   document.getElementById('imageConvertFileInfo').style.display = 'none';
   document.getElementById('imageConvertBtn').disabled = true;
   document.getElementById('imageConvertDownloadBtn').style.display = 'none';
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Unable to read the selected image'));
+    image.src = src;
+  });
 }
 
 function handleImagePdfFileSelect(e) {
