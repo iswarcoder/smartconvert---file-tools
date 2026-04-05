@@ -27,6 +27,11 @@ const platformState = {
 
 let selectedFile = null;
 let convertDownloadBlobUrl = null;
+let mergeDownloadBlobUrl = null;
+let splitDownloadBlobUrl = null;
+let compressDownloadBlobUrl = null;
+let imagePdfDownloadBlobUrl = null;
+let loadingRequests = 0;
 
 // ============================================
 // FORMAT MAPPING FOR CONVERSIONS
@@ -539,6 +544,99 @@ function isConvertReady() {
   return platformState.selectedFiles.convert && document.getElementById('convertFormatSelect').value;
 }
 
+function showLoading(message = 'Processing...') {
+  loadingRequests += 1;
+  const overlay = document.getElementById('loadingOverlay');
+  const loadingText = document.getElementById('loadingOverlayText');
+
+  if (overlay) {
+    overlay.style.display = 'flex';
+  }
+
+  if (loadingText) {
+    loadingText.textContent = message;
+  }
+}
+
+function hideLoading() {
+  loadingRequests = Math.max(0, loadingRequests - 1);
+
+  if (loadingRequests > 0) {
+    return;
+  }
+
+  const overlay = document.getElementById('loadingOverlay');
+  if (overlay) {
+    overlay.style.display = 'none';
+  }
+}
+
+function getFilenameFromDisposition(contentDisposition) {
+  if (!contentDisposition) {
+    return '';
+  }
+
+  const utfMatch = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utfMatch && utfMatch[1]) {
+    return decodeURIComponent(utfMatch[1]);
+  }
+
+  const plainMatch = contentDisposition.match(/filename="?([^";]+)"?/i);
+  return plainMatch && plainMatch[1] ? plainMatch[1] : '';
+}
+
+function triggerDownload(blobUrl, filename) {
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+async function readErrorMessage(response) {
+  const contentType = response.headers.get('content-type') || '';
+
+  if (contentType.includes('application/json')) {
+    const data = await response.json().catch(() => ({}));
+    return data.message || data.error || 'Request failed';
+  }
+
+  const text = await response.text().catch(() => '');
+  return text || 'Request failed';
+}
+
+async function submitFileRequest(endpoint, formData, options = {}) {
+  showLoading(options.loadingMessage || 'Processing...');
+
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      method: 'POST',
+      body: formData
+    });
+
+    const contentType = response.headers.get('content-type') || '';
+
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+
+    if (contentType.includes('application/json')) {
+      return await response.json();
+    }
+
+    const blob = await response.blob();
+    const filename = getFilenameFromDisposition(response.headers.get('content-disposition')) || options.defaultFilename || 'converted.pdf';
+    const blobUrl = URL.createObjectURL(blob);
+
+    triggerDownload(blobUrl, filename);
+
+    return { blobUrl, filename };
+  } finally {
+    hideLoading();
+  }
+}
+
 async function performConversion() {
   const file = selectedFile || platformState.selectedFiles.convert;
   const format = document.getElementById('convertFormatSelect').value;
@@ -558,33 +656,18 @@ async function performConversion() {
 
     showProgress('convert', 45, 'Converting...');
 
-    const response = await fetch(`${API_URL}/convert`, {
-      method: 'POST',
-      body: formData
+    const outputExtension = format || 'docx';
+    const result = await submitFileRequest('/convert', formData, {
+      loadingMessage: 'Converting PDF to Word...',
+      defaultFilename: `converted.${outputExtension}`
     });
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.details
-        ? `${errorData.error || errorData.message || 'Conversion failed'}: ${typeof errorData.details === 'object' ? JSON.stringify(errorData.details) : errorData.details}`
-        : (errorData.error || errorData.message || 'Conversion failed');
-      throw new Error(errorMessage);
+    if (result?.blobUrl) {
+      if (convertDownloadBlobUrl) {
+        URL.revokeObjectURL(convertDownloadBlobUrl);
+      }
+      convertDownloadBlobUrl = result.blobUrl;
     }
-
-    const blob = await response.blob();
-    if (convertDownloadBlobUrl) {
-      URL.revokeObjectURL(convertDownloadBlobUrl);
-    }
-
-    const blobUrl = URL.createObjectURL(blob);
-    convertDownloadBlobUrl = blobUrl;
-    const outputExtension = format || 'docx';
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = `converted.${outputExtension}`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
 
     showProgress('convert', 100, 'Done');
 
@@ -700,18 +783,19 @@ async function performMergePdf() {
   try {
     const formData = new FormData();
     platformState.selectedFiles.merge.forEach(file => {
-      formData.append('files', file);
+      formData.append('file', file);
     });
     
-    const response = await fetch(`${API_URL}/api/pdf-merge`, {
-      method: 'POST',
-      body: formData
+    const result = await submitFileRequest('/merge', formData, {
+      loadingMessage: 'Merging PDFs...',
+      defaultFilename: 'merged.pdf'
     });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Merge failed');
+
+    if (result?.blobUrl) {
+      if (mergeDownloadBlobUrl) {
+        URL.revokeObjectURL(mergeDownloadBlobUrl);
+      }
+      mergeDownloadBlobUrl = result.blobUrl;
     }
     
     showProgress('merge', 100, '✅ Merge complete!');
@@ -721,9 +805,9 @@ async function performMergePdf() {
       showToast('✅ PDFs merged successfully!', 'success');
       
       document.getElementById('mergeDownloadBtn').style.display = 'block';
-      document.getElementById('mergeDownloadBtn').onclick = () => downloadFile(data.download_url);
-      
-      addConversionToHistory('merged_pdfs', 'Merge PDF', data.output_filename);
+      document.getElementById('mergeDownloadBtn').onclick = () => downloadFile(mergeDownloadBlobUrl || result.blobUrl, 'merged.pdf');
+
+      addConversionToHistory('merged_pdfs', 'Merge PDF', 'merged.pdf');
       resetMergeForm();
     }, 500);
     
@@ -736,6 +820,11 @@ async function performMergePdf() {
 }
 
 function resetMergeForm() {
+  if (mergeDownloadBlobUrl) {
+    URL.revokeObjectURL(mergeDownloadBlobUrl);
+    mergeDownloadBlobUrl = null;
+  }
+
   platformState.selectedFiles.merge = [];
   document.getElementById('mergeFileInput').value = '';
   document.getElementById('mergeAddBtn').style.display = 'inline-flex';
@@ -787,15 +876,16 @@ async function performSplitPdf() {
     formData.append('file', file);
     formData.append('pages', pages);
     
-    const response = await fetch(`${API_URL}/api/split-pdf`, {
-      method: 'POST',
-      body: formData
+    const result = await submitFileRequest('/split', formData, {
+      loadingMessage: 'Splitting PDF...',
+      defaultFilename: 'split.pdf'
     });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Split failed');
+
+    if (result?.blobUrl) {
+      if (splitDownloadBlobUrl) {
+        URL.revokeObjectURL(splitDownloadBlobUrl);
+      }
+      splitDownloadBlobUrl = result.blobUrl;
     }
     
     showProgress('split', 100, '✅ Split complete!');
@@ -805,9 +895,9 @@ async function performSplitPdf() {
       showToast('✅ PDF split successfully!', 'success');
       
       document.getElementById('splitDownloadBtn').style.display = 'block';
-      document.getElementById('splitDownloadBtn').onclick = () => downloadFile(data.download_url);
-      
-      addConversionToHistory(file.name, 'Split PDF', data.output_filename);
+      document.getElementById('splitDownloadBtn').onclick = () => downloadFile(splitDownloadBlobUrl || result.blobUrl, 'split.pdf');
+
+      addConversionToHistory(file.name, 'Split PDF', 'split.pdf');
       resetSplitForm();
     }, 500);
     
@@ -820,6 +910,11 @@ async function performSplitPdf() {
 }
 
 function resetSplitForm() {
+  if (splitDownloadBlobUrl) {
+    URL.revokeObjectURL(splitDownloadBlobUrl);
+    splitDownloadBlobUrl = null;
+  }
+
   platformState.selectedFiles.split = null;
   document.getElementById('splitFileInput').value = '';
   document.getElementById('splitPagesInput').value = '';
@@ -871,17 +966,18 @@ async function performCompressPdf() {
   try {
     const formData = new FormData();
     formData.append('file', file);
-      formData.append('target_size_kb', targetSize);
-    
-    const response = await fetch(`${API_URL}/api/compress-pdf`, {
-      method: 'POST',
-      body: formData
+    formData.append('target_size_kb', targetSize);
+
+    const result = await submitFileRequest('/compress', formData, {
+      loadingMessage: 'Compressing PDF...',
+      defaultFilename: 'compressed.pdf'
     });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Compression failed');
+
+    if (result?.blobUrl) {
+      if (compressDownloadBlobUrl) {
+        URL.revokeObjectURL(compressDownloadBlobUrl);
+      }
+      compressDownloadBlobUrl = result.blobUrl;
     }
     
     showProgress('compress', 100, '✅ Compression complete!');
@@ -890,16 +986,12 @@ async function performCompressPdf() {
       hideProgress('compress');
         showToast('✅ PDF compressed successfully!', 'success');
       
-      document.getElementById('compressionResult').style.display = 'block';
-      document.getElementById('originalSize').textContent = formatBytes(data.original_size);
-        document.getElementById('targetSize').textContent = `${data.target_size_kb} KB`;
-      document.getElementById('compressedSize').textContent = formatBytes(data.compressed_size);
-      document.getElementById('reductionPercent').textContent = `${data.reduction_percent}%`;
+      document.getElementById('compressionResult').style.display = 'none';
       
       document.getElementById('compressDownloadBtn').style.display = 'block';
-      document.getElementById('compressDownloadBtn').onclick = () => downloadFile(data.download_url);
-      
-      addConversionToHistory(file.name, 'Compress PDF', data.output_filename);
+      document.getElementById('compressDownloadBtn').onclick = () => downloadFile(compressDownloadBlobUrl || result.blobUrl, 'compressed.pdf');
+
+      addConversionToHistory(file.name, 'Compress PDF', 'compressed.pdf');
       resetCompressForm();
     }, 500);
     
@@ -912,6 +1004,11 @@ async function performCompressPdf() {
 }
 
 function resetCompressForm() {
+  if (compressDownloadBlobUrl) {
+    URL.revokeObjectURL(compressDownloadBlobUrl);
+    compressDownloadBlobUrl = null;
+  }
+
   platformState.selectedFiles.compress = null;
   document.getElementById('compressFileInput').value = '';
   document.getElementById('compressTargetSize').value = '250';
@@ -1017,27 +1114,19 @@ async function performEditPdf() {
       formData.append('image_width', imageWidth);
     }
 
-    const response = await fetch(`${API_URL}/api/edit-pdf`, {
-      method: 'POST',
-      body: formData
+    const data = await submitFileRequest('/edit', formData, {
+      loadingMessage: 'Preparing edit placeholder...'
     });
-
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.message || 'PDF edit failed');
-    }
 
     showProgress('editPdf', 100, '✅ PDF edit complete!');
 
     setTimeout(() => {
       hideProgress('editPdf');
-      const summary = `✅ Edited PDF: ${data.replacements_count || 0} text changes, ${data.images_added_count || 0} image placements`;
-      showToast(summary, 'success');
+      showToast(data.message || '✅ Edit PDF placeholder completed', 'success');
 
-      document.getElementById('editPdfDownloadBtn').style.display = 'block';
-      document.getElementById('editPdfDownloadBtn').onclick = () => downloadFile(data.download_url);
+      document.getElementById('editPdfDownloadBtn').style.display = 'none';
 
-      addConversionToHistory(file.name, 'Edit PDF', data.output_filename);
+      addConversionToHistory(file.name, 'Edit PDF', file.name);
       resetEditPdfForm();
     }, 500);
 
@@ -1186,15 +1275,16 @@ async function performImageToPdf() {
     const formData = new FormData();
     formData.append('file', file);
     
-    const response = await fetch(`${API_URL}/api/image-to-pdf`, {
-      method: 'POST',
-      body: formData
+    const result = await submitFileRequest('/image-to-pdf', formData, {
+      loadingMessage: 'Converting image to PDF...',
+      defaultFilename: 'image-to-pdf.pdf'
     });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Conversion failed');
+
+    if (result?.blobUrl) {
+      if (imagePdfDownloadBlobUrl) {
+        URL.revokeObjectURL(imagePdfDownloadBlobUrl);
+      }
+      imagePdfDownloadBlobUrl = result.blobUrl;
     }
     
     showProgress('imagePdf', 100, '✅ Conversion complete!');
@@ -1204,9 +1294,9 @@ async function performImageToPdf() {
       showToast('✅ Image converted to PDF!', 'success');
       
       document.getElementById('imagePdfDownloadBtn').style.display = 'block';
-      document.getElementById('imagePdfDownloadBtn').onclick = () => downloadFile(data.download_url);
-      
-      addConversionToHistory(file.name, 'Image to PDF', data.output_filename);
+      document.getElementById('imagePdfDownloadBtn').onclick = () => downloadFile(imagePdfDownloadBlobUrl || result.blobUrl, 'image-to-pdf.pdf');
+
+      addConversionToHistory(file.name, 'Image to PDF', 'image-to-pdf.pdf');
       resetImagePdfForm();
     }, 500);
     
@@ -1219,6 +1309,11 @@ async function performImageToPdf() {
 }
 
 function resetImagePdfForm() {
+  if (imagePdfDownloadBlobUrl) {
+    URL.revokeObjectURL(imagePdfDownloadBlobUrl);
+    imagePdfDownloadBlobUrl = null;
+  }
+
   platformState.selectedFiles.imagePdf = null;
   document.getElementById('imagePdfFileInput').value = '';
   document.getElementById('imagePdfFileInfo').style.display = 'none';
@@ -1385,8 +1480,20 @@ function hideProgress(tool) {
 }
 
 function downloadFile(url, customFilename = '') {
-  openDownloadInNewTab(url, customFilename);
-  showToast('⬇️ Download opened in a new tab', 'success');
+  const link = document.createElement('a');
+  link.href = url;
+
+  if (customFilename) {
+    link.download = customFilename;
+  } else {
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+  }
+
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast('⬇️ Download started', 'success');
 }
 
 function openDownloadInNewTab(url) {
