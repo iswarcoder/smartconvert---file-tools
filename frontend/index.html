@@ -51,12 +51,12 @@
     <section id="convertView" class="tool-view" style="display: none;">
       <div class="tool-header">
         <button class="back-btn" onclick="showDashboard()">← Back to Dashboard</button>
-        <h2>🔄 Convert File</h2>
+        <h2>🔄 File Convert</h2>
       </div>
       <div class="tool-content">
         <!-- File Type Selection -->
         <div class="file-type-selector">
-          <h3>Select File Type to Convert</h3>
+          <h3>Select a file type to convert</h3>
           <div class="file-type-options">
             <div class="file-type-option" data-type="word" onclick="selectFileType('word')">
               <div class="file-type-icon" style="color: #2b579a;">
@@ -66,7 +66,7 @@
               </div>
               <div class="file-type-info">
                 <h4>Word Documents</h4>
-                <p>DOCX, DOC</p>
+                <p>DOCX</p>
               </div>
             </div>
             <div class="file-type-option" data-type="excel" onclick="selectFileType('excel')">
@@ -78,7 +78,7 @@
               </div>
               <div class="file-type-info">
                 <h4>Excel Spreadsheets</h4>
-                <p>XLSX, XLS</p>
+                <p>XLSX</p>
               </div>
             </div>
             <div class="file-type-option" data-type="powerpoint" onclick="selectFileType('powerpoint')">
@@ -90,7 +90,7 @@
               </div>
               <div class="file-type-info">
                 <h4>PowerPoint Presentations</h4>
-                <p>PPTX, PPT</p>
+                <p>PPTX</p>
               </div>
             </div>
             <div class="file-type-option" data-type="pdf" onclick="selectFileType('pdf')">
@@ -114,9 +114,9 @@
               <polyline points="17 8 12 3 7 8"></polyline>
               <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
-            <p class="upload-text">Drag & drop your file here</p>
+            <p class="upload-text">Drag & drop your Word, Excel, PowerPoint, or PDF file here</p>
             <p class="upload-subtext">or click to browse</p>
-            <input type="file" id="convertFileInput" class="file-input" accept=".docx,.doc,.odt,.pptx,.ppt,.odp,.xlsx,.xls,.ods,.pdf">
+            <input type="file" id="convertFileInput" class="file-input" accept=".docx,.odt,.pptx,.xlsx,.pdf">
           </div>
         </div>
 

@@ -38,15 +38,10 @@ let loadingRequests = 0;
 // ============================================
 
 const formatMap = {
-  docx: ['pdf', 'txt', 'pptx'],
-  doc: ['pdf', 'txt', 'docx', 'pptx'],
-  odt: ['docx', 'pdf', 'pptx'],
-  pptx: ['pdf', 'odp', 'docx'],
-  ppt: ['pdf', 'pptx', 'odp', 'docx'],
-  odp: ['pptx', 'pdf', 'docx'],
-  xlsx: ['pdf', 'csv'],
-  xls: ['pdf', 'csv', 'xlsx'],
-  ods: ['xlsx', 'pdf', 'csv'],
+  docx: ['pdf'],
+  odt: ['pdf'],
+  pptx: ['pdf'],
+  xlsx: ['pdf'],
   pdf: ['docx', 'pptx'],
 };
 
@@ -431,13 +426,13 @@ function selectFileType(type) {
   
   switch(type) {
     case 'word':
-      acceptTypes = '.docx,.doc,.odt';
+      acceptTypes = '.docx,.odt';
       break;
     case 'excel':
-      acceptTypes = '.xlsx,.xls,.ods';
+      acceptTypes = '.xlsx';
       break;
     case 'powerpoint':
-      acceptTypes = '.pptx,.ppt,.odp';
+      acceptTypes = '.pptx';
       break;
     case 'pdf':
       acceptTypes = '.pdf';
@@ -493,7 +488,8 @@ function handleConvertFileSelect(e) {
     const ext = file.name.split('.').pop().toLowerCase();
     
     if (!formatMap[ext]) {
-      showToast(`❌ File type .${ext.toUpperCase()} not supported`, 'error');
+      showToast('❌ Convert supports DOCX, ODT, PPTX, XLSX, and PDF files', 'error');
+      e.target.value = '';
       return;
     }
     
@@ -516,11 +512,11 @@ function updateConvertFormatSelector(formats) {
   let availableFormats = [];
   
   if (selectedFileType === 'word') {
-    availableFormats = ['pdf', 'txt', 'docx', 'pptx'];
+    availableFormats = ['pdf'];
   } else if (selectedFileType === 'excel') {
-    availableFormats = ['pdf', 'csv', 'xlsx'];
+    availableFormats = ['pdf'];
   } else if (selectedFileType === 'powerpoint') {
-    availableFormats = ['pdf', 'pptx', 'docx'];
+    availableFormats = ['pdf'];
   } else if (selectedFileType === 'pdf') {
     availableFormats = ['docx', 'pptx'];
   } else {
@@ -652,13 +648,16 @@ async function performConversion() {
   try {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('target_format', file.name.toLowerCase().endsWith('.pdf') ? format : 'pdf');
+    formData.append('target_format', format);
 
     showProgress('convert', 45, 'Converting...');
 
-    const outputExtension = format || 'docx';
+    const outputExtension = format;
+    const sourceExtension = file.name.split('.').pop().toLowerCase();
     const result = await submitFileRequest('/convert', formData, {
-      loadingMessage: 'Converting PDF to Word...',
+      loadingMessage: sourceExtension === 'pdf'
+        ? `Converting PDF to ${format.toUpperCase()}...`
+        : 'Converting to PDF...',
       defaultFilename: `converted.${outputExtension}`
     });
 
