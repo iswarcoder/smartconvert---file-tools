@@ -5,12 +5,8 @@ const fs = require('fs');
 const fsPromises = require('fs/promises');
 const path = require('path');
 const dotenv = require('dotenv');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
 
 dotenv.config();
-
-const execFileAsync = promisify(execFile);
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -51,55 +47,6 @@ function sanitizeFileName(inputName) {
 function baseName(fileName) {
   const extension = path.extname(fileName).toLowerCase();
   return sanitizeFileName(path.basename(fileName, extension));
-}
-
-async function findLibreOfficeCommand() {
-  const candidates = ['soffice', 'libreoffice'];
-
-  for (const commandName of candidates) {
-    try {
-      await execFileAsync(commandName, ['--version']);
-      return commandName;
-    } catch (error) {
-      if (error && error.code !== 'ENOENT') {
-        return commandName;
-      }
-    }
-  }
-
-  throw new Error('LibreOffice not found. Please install LibreOffice.');
-}
-
-async function convertPdfWithLibreOffice(inputFile, targetFormat) {
-  const outputDir = path.join(TEMP_DIR, `converted-${Date.now()}`);
-  await fsPromises.mkdir(outputDir, { recursive: true });
-
-  const commandName = await findLibreOfficeCommand();
-  const extension = targetFormat === 'docx' ? 'docx' : 'pptx';
-
-  await execFileAsync(commandName, [
-    '--headless',
-    '--convert-to',
-    extension,
-    '--outdir',
-    outputDir,
-    inputFile.path
-  ]);
-
-  const expectedOutput = path.join(outputDir, `${baseName(inputFile.originalname)}.${extension}`);
-  const fallbackFiles = await fsPromises.readdir(outputDir);
-  const matchedFile = fallbackFiles.find((name) => name.toLowerCase().endsWith(`.${extension}`));
-  const outputPath = matchedFile ? path.join(outputDir, matchedFile) : expectedOutput;
-
-  if (!fs.existsSync(outputPath)) {
-    throw new Error(`PDF to ${extension.toUpperCase()} conversion failed`);
-  }
-
-  return {
-    outputPath,
-    cleanupPaths: [outputDir, inputFile.path],
-    downloadName: `${baseName(inputFile.originalname)}.${extension}`
-  };
 }
 
 function outputExtensionFromProcess(processResponse, fallbackExtension) {
@@ -310,20 +257,9 @@ function handleSingleFileRoute({ tool, allowedExtensions, extraParams }) {
       const targetFormat = String(req.body?.target_format || '').toLowerCase();
 
       if (extension === '.pdf') {
-        if (!['docx', 'pptx'].includes(targetFormat)) {
-          return res.status(400).json({
-            error: 'Unsupported file type',
-            message: 'PDF files can only be converted to DOCX or PPTX'
-          });
-        }
-
-        const result = await convertPdfWithLibreOffice(req.file, targetFormat);
-        return res.download(result.outputPath, result.downloadName, async (downloadError) => {
-          if (downloadError) {
-            console.error('Download failed:', downloadError);
-          }
-
-          await cleanupFiles(result.cleanupPaths);
+        return res.status(400).json({
+          error: 'Unsupported file type',
+          message: 'PDF input is not supported. Upload DOCX, ODT, PPTX, or XLSX to convert to PDF.'
         });
       }
 
@@ -447,7 +383,7 @@ app.get('/api/tools', (req, res) => {
       {
         id: 'convert',
         name: 'Convert File',
-        description: 'Convert office files to PDF or PDF files to Word/PowerPoint',
+        description: 'Convert office documents to PDF',
         icon: '📄',
         available: true,
         endpoint: '/convert'
@@ -498,7 +434,7 @@ app.get('/api/tools', (req, res) => {
 
 const convertHandler = handleSingleFileRoute({
   tool: 'officepdf',
-  allowedExtensions: ['.docx', '.odt', '.pptx', '.xlsx', '.pdf']
+  allowedExtensions: ['.docx', '.odt', '.pptx', '.xlsx']
 });
 
 const splitHandler = handleSingleFileRoute({

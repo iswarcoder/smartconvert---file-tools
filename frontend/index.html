@@ -51,12 +51,12 @@
     <section id="convertView" class="tool-view" style="display: none;">
       <div class="tool-header">
         <button class="back-btn" onclick="showDashboard()">← Back to Dashboard</button>
-        <h2>🔄 File Convert</h2>
+        <h2>🔄 Office to PDF</h2>
       </div>
       <div class="tool-content">
         <!-- File Type Selection -->
         <div class="file-type-selector">
-          <h3>Select a file type to convert</h3>
+          <h3>Select an office file to convert to PDF</h3>
           <div class="file-type-options">
             <div class="file-type-option" data-type="word" onclick="selectFileType('word')">
               <div class="file-type-icon" style="color: #2b579a;">
@@ -93,17 +93,6 @@
                 <p>PPTX</p>
               </div>
             </div>
-            <div class="file-type-option" data-type="pdf" onclick="selectFileType('pdf')">
-              <div class="file-type-icon" style="color: #e53935;">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M20 2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-8.5 7.5c0 .83-.67 1.5-1.5 1.5H9v2H7.5V7H10c.83 0 1.5.67 1.5 1.5v1zm5 2c0 .83-.67 1.5-1.5 1.5h-2.5V7H15c.83 0 1.5.67 1.5 1.5v3zm4-3H19v1h1.5V11H19v2h-1.5V7h3v1.5zM9 9.5h1v-1H9v1zM14 11h1V8.5h-1V11zM6 6H4v14c0 1.1.9 2 2 2h14v-2H6V6z"/>
-                </svg>
-              </div>
-              <div class="file-type-info">
-                <h4>PDF Documents</h4>
-                <p>PDF</p>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -114,9 +103,9 @@
               <polyline points="17 8 12 3 7 8"></polyline>
               <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
-            <p class="upload-text">Drag & drop your Word, Excel, PowerPoint, or PDF file here</p>
+            <p class="upload-text">Drag & drop your Word, Excel, or PowerPoint file here</p>
             <p class="upload-subtext">or click to browse</p>
-            <input type="file" id="convertFileInput" class="file-input" accept=".docx,.odt,.pptx,.xlsx,.pdf">
+            <input type="file" id="convertFileInput" class="file-input" accept=".docx,.odt,.pptx,.xlsx">
           </div>
         </div>
 

@@ -42,7 +42,6 @@ const formatMap = {
   odt: ['pdf'],
   pptx: ['pdf'],
   xlsx: ['pdf'],
-  pdf: ['docx', 'pptx'],
 };
 
 const formatLabels = {
@@ -434,9 +433,6 @@ function selectFileType(type) {
     case 'powerpoint':
       acceptTypes = '.pptx';
       break;
-    case 'pdf':
-      acceptTypes = '.pdf';
-      break;
   }
   
   fileInput.accept = acceptTypes;
@@ -491,13 +487,12 @@ function handleConvertFileSelect(e) {
       odt: 'word',
       xlsx: 'excel',
       pptx: 'powerpoint',
-      pdf: 'pdf',
     };
 
     selectedFileType = fileTypeByExtension[ext] || null;
     
     if (!formatMap[ext]) {
-      showToast('❌ Convert supports DOCX, ODT, PPTX, XLSX, and PDF files', 'error');
+      showToast('❌ Convert supports DOCX, ODT, PPTX, and XLSX files', 'error');
       e.target.value = '';
       return;
     }
@@ -526,8 +521,6 @@ function updateConvertFormatSelector(formats) {
     availableFormats = ['pdf'];
   } else if (selectedFileType === 'powerpoint') {
     availableFormats = ['pdf'];
-  } else if (selectedFileType === 'pdf') {
-    availableFormats = ['docx', 'pptx'];
   } else {
     // Fallback to all formats
     availableFormats = formats;
@@ -662,11 +655,8 @@ async function performConversion() {
     showProgress('convert', 45, 'Converting...');
 
     const outputExtension = format;
-    const sourceExtension = file.name.split('.').pop().toLowerCase();
     const result = await submitFileRequest('/convert', formData, {
-      loadingMessage: sourceExtension === 'pdf'
-        ? `Converting PDF to ${format.toUpperCase()}...`
-        : 'Converting to PDF...',
+      loadingMessage: 'Converting to PDF...',
       defaultFilename: `converted.${outputExtension}`
     });
 
