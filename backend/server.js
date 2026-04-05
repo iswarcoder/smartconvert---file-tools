@@ -405,8 +405,8 @@ app.get('/api/tools', (req, res) => {
 });
 
 const convertHandler = handleSingleFileRoute({
-  tool: 'pdfoffice',
-  allowedExtensions: ['.pdf']
+  tool: 'officepdf',
+  allowedExtensions: ['.doc', '.docx', '.odt', '.ppt', '.pptx', '.odp', '.xls', '.xlsx', '.ods']
 });
 
 const splitHandler = handleSingleFileRoute({

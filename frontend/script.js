@@ -652,7 +652,7 @@ async function performConversion() {
   try {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('target_format', format);
+    formData.append('target_format', file.name.toLowerCase().endsWith('.pdf') ? format : 'pdf');
 
     showProgress('convert', 45, 'Converting...');
 
@@ -661,6 +661,8 @@ async function performConversion() {
       loadingMessage: 'Converting PDF to Word...',
       defaultFilename: `converted.${outputExtension}`
     });
+
+    const blobUrl = result?.blobUrl || convertDownloadBlobUrl;
 
     if (result?.blobUrl) {
       if (convertDownloadBlobUrl) {
@@ -700,11 +702,6 @@ async function performConversion() {
 }
 
 function clearConvertSelection() {
-  if (convertDownloadBlobUrl) {
-    URL.revokeObjectURL(convertDownloadBlobUrl);
-    convertDownloadBlobUrl = null;
-  }
-
   selectedFile = null;
   platformState.selectedFiles.convert = null;
   document.getElementById('convertFileInput').value = '';
