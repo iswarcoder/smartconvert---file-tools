@@ -32,7 +32,7 @@ function requireApiKeys() {
   const secretKey = process.env.SECRET_KEY;
 
   if (!publicKey || !secretKey) {
-    throw new Error('PUBLIC_KEY and SECRET_KEY are required');
+    throw new Error('Missing PUBLIC_KEY or SECRET_KEY. Add both in Render environment variables or backend/.env for local testing.');
   }
 
   return { publicKey, secretKey };
@@ -346,6 +346,20 @@ function handleEditRoute() {
 
 app.get('/', (req, res) => {
   res.send('Backend running 🚀');
+});
+
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    configured: Boolean(process.env.PUBLIC_KEY && process.env.SECRET_KEY)
+  });
+});
+
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    configured: Boolean(process.env.PUBLIC_KEY && process.env.SECRET_KEY)
+  });
 });
 
 app.get('/api/tools', (req, res) => {
