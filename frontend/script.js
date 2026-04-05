@@ -686,7 +686,7 @@ async function performConversion() {
         document.body.removeChild(repeatLink);
       };
 
-      addConversionToHistory(file.name, 'Convert', file.name);
+      addConversionToHistory(file.name, 'Convert', file.name, convertDownloadBlobUrl || result.blobUrl || '');
       clearConvertSelection();
     }, 500);
     
@@ -803,7 +803,7 @@ async function performMergePdf() {
       document.getElementById('mergeDownloadBtn').style.display = 'block';
       document.getElementById('mergeDownloadBtn').onclick = () => downloadFile(mergeDownloadBlobUrl || result.blobUrl, 'merged.pdf');
 
-      addConversionToHistory('merged_pdfs', 'Merge PDF', 'merged.pdf');
+      addConversionToHistory('merged_pdfs', 'Merge PDF', 'merged.pdf', mergeDownloadBlobUrl || result.blobUrl || '');
       resetMergeForm();
     }, 500);
     
@@ -893,7 +893,7 @@ async function performSplitPdf() {
       document.getElementById('splitDownloadBtn').style.display = 'block';
       document.getElementById('splitDownloadBtn').onclick = () => downloadFile(splitDownloadBlobUrl || result.blobUrl, 'split.pdf');
 
-      addConversionToHistory(file.name, 'Split PDF', 'split.pdf');
+      addConversionToHistory(file.name, 'Split PDF', 'split.pdf', splitDownloadBlobUrl || result.blobUrl || '');
       resetSplitForm();
     }, 500);
     
@@ -987,7 +987,7 @@ async function performCompressPdf() {
       document.getElementById('compressDownloadBtn').style.display = 'block';
       document.getElementById('compressDownloadBtn').onclick = () => downloadFile(compressDownloadBlobUrl || result.blobUrl, 'compressed.pdf');
 
-      addConversionToHistory(file.name, 'Compress PDF', 'compressed.pdf');
+      addConversionToHistory(file.name, 'Compress PDF', 'compressed.pdf', compressDownloadBlobUrl || result.blobUrl || '');
       resetCompressForm();
     }, 500);
     
@@ -1122,7 +1122,7 @@ async function performEditPdf() {
 
       document.getElementById('editPdfDownloadBtn').style.display = 'none';
 
-      addConversionToHistory(file.name, 'Edit PDF', file.name);
+      addConversionToHistory(file.name, 'Edit PDF', file.name, '');
       resetEditPdfForm();
     }, 500);
 
@@ -1256,7 +1256,7 @@ async function performImageConvert() {
 
       imageConvertDownloadBlobUrl = blobUrl;
       
-      addConversionToHistory(file.name, 'Image Convert', safeName);
+      addConversionToHistory(file.name, 'Image Convert', safeName, imageConvertDownloadBlobUrl || blobUrl || '');
       resetImageConvertForm();
     }, 500);
     
@@ -1335,7 +1335,7 @@ async function performImageToPdf() {
       document.getElementById('imagePdfDownloadBtn').style.display = 'block';
       document.getElementById('imagePdfDownloadBtn').onclick = () => downloadFile(imagePdfDownloadBlobUrl || result.blobUrl, 'image-to-pdf.pdf');
 
-      addConversionToHistory(file.name, 'Image to PDF', 'image-to-pdf.pdf');
+      addConversionToHistory(file.name, 'Image to PDF', 'image-to-pdf.pdf', imagePdfDownloadBlobUrl || result.blobUrl || '');
       resetImagePdfForm();
     }, 500);
     
@@ -1364,13 +1364,14 @@ function resetImagePdfForm() {
 // HISTORY MANAGEMENT
 // ============================================
 
-function addConversionToHistory(filename, tool, outputFilename) {
+function addConversionToHistory(filename, tool, outputFilename, downloadUrl = '') {
   const conversion = {
     id: Date.now(),
     filename: filename,
     tool: tool,
     timestamp: new Date().toLocaleString(),
     outputFilename: outputFilename,
+    downloadUrl: downloadUrl,
   };
   
   platformState.conversions.unshift(conversion);
@@ -1419,9 +1420,14 @@ function downloadHistoryFile(conversionId) {
     return;
   }
 
-  const url = `/api/download/${conversion.outputFilename}`;
   const safeName = buildSafeDownloadName(conversion.displayFilename || conversion.filename, conversion.outputFilename);
-  downloadFile(url, safeName);
+
+  if (!conversion.downloadUrl) {
+    showToast('❌ Download is only available for items converted in this session. Please convert the file again to download it.', 'error');
+    return;
+  }
+
+  downloadFile(conversion.downloadUrl, safeName);
 }
 
 function buildSafeDownloadName(requestedName, fallbackFilename) {
