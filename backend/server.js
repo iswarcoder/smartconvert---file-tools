@@ -11,6 +11,7 @@ dotenv.config();
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const TEMP_DIR = '/tmp';
+const OUTPUT_DIR = path.join(__dirname, 'outputs');
 const API_ROOT = 'https://api.ilovepdf.com/v1';
 const upload = multer({
   dest: TEMP_DIR,
@@ -20,8 +21,11 @@ const upload = multer({
 });
 
 fs.mkdirSync(TEMP_DIR, { recursive: true });
+fs.mkdirSync(OUTPUT_DIR, { recursive: true });
 
-app.use(cors());
+app.use(cors({
+  exposedHeaders: ['Content-Disposition', 'X-Download-Filename']
+}));
 app.use(express.json());
 
 let cachedToken = '';
@@ -228,8 +232,12 @@ async function executeToolWorkflow({ tool, files, extraParams = {} }) {
 async function writeAndDownloadResponse(res, buffer, downloadName, cleanupPaths) {
   const safeDownloadName = sanitizeFileName(downloadName);
   const tempPath = path.join(TEMP_DIR, `${Date.now()}-${safeDownloadName}`);
+  const persistedPath = path.join(OUTPUT_DIR, safeDownloadName);
 
   await fsPromises.writeFile(tempPath, buffer);
+  await fsPromises.writeFile(persistedPath, buffer);
+
+  res.setHeader('X-Download-Filename', safeDownloadName);
 
   return res.download(tempPath, safeDownloadName, async (downloadError) => {
     if (downloadError) {
@@ -487,6 +495,22 @@ app.post('/api/edit', upload.fields([
   { name: 'file', maxCount: 1 },
   { name: 'image', maxCount: 1 }
 ]), handleEditRoute());
+
+app.get('/api/download/:filename', async (req, res) => {
+  try {
+    const safeFilename = sanitizeFileName(req.params.filename);
+    const filePath = path.join(OUTPUT_DIR, safeFilename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send('Not Found');
+    }
+
+    return res.download(filePath, safeFilename);
+  } catch (error) {
+    console.error('download failed:', error);
+    return res.status(500).json({ error: 'download failed', message: 'Unable to download file' });
+  }
+});
 
 app.use((error, req, res, next) => {
   if (res.headersSent) {

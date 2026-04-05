@@ -625,7 +625,10 @@ async function submitFileRequest(endpoint, formData, options = {}) {
     }
 
     const blob = await response.blob();
-    const filename = getFilenameFromDisposition(response.headers.get('content-disposition')) || options.defaultFilename || 'converted.pdf';
+    const filename = response.headers.get('x-download-filename')
+      || getFilenameFromDisposition(response.headers.get('content-disposition'))
+      || options.defaultFilename
+      || 'converted.pdf';
     const blobUrl = URL.createObjectURL(blob);
 
     triggerDownload(blobUrl, filename);
@@ -686,7 +689,7 @@ async function performConversion() {
         document.body.removeChild(repeatLink);
       };
 
-      addConversionToHistory(file.name, 'Convert', file.name, convertDownloadBlobUrl || result.blobUrl || '');
+      addConversionToHistory(file.name, 'Convert', file.name, result.filename || `converted.${outputExtension}`, convertDownloadBlobUrl || result.blobUrl || '');
       clearConvertSelection();
     }, 500);
     
@@ -803,7 +806,7 @@ async function performMergePdf() {
       document.getElementById('mergeDownloadBtn').style.display = 'block';
       document.getElementById('mergeDownloadBtn').onclick = () => downloadFile(mergeDownloadBlobUrl || result.blobUrl, 'merged.pdf');
 
-      addConversionToHistory('merged_pdfs', 'Merge PDF', 'merged.pdf', mergeDownloadBlobUrl || result.blobUrl || '');
+      addConversionToHistory('merged_pdfs', 'Merge PDF', 'merged.pdf', result.filename || 'merged.pdf', mergeDownloadBlobUrl || result.blobUrl || '');
       resetMergeForm();
     }, 500);
     
@@ -893,7 +896,7 @@ async function performSplitPdf() {
       document.getElementById('splitDownloadBtn').style.display = 'block';
       document.getElementById('splitDownloadBtn').onclick = () => downloadFile(splitDownloadBlobUrl || result.blobUrl, 'split.pdf');
 
-      addConversionToHistory(file.name, 'Split PDF', 'split.pdf', splitDownloadBlobUrl || result.blobUrl || '');
+      addConversionToHistory(file.name, 'Split PDF', 'split.pdf', result.filename || 'split.pdf', splitDownloadBlobUrl || result.blobUrl || '');
       resetSplitForm();
     }, 500);
     
@@ -987,7 +990,7 @@ async function performCompressPdf() {
       document.getElementById('compressDownloadBtn').style.display = 'block';
       document.getElementById('compressDownloadBtn').onclick = () => downloadFile(compressDownloadBlobUrl || result.blobUrl, 'compressed.pdf');
 
-      addConversionToHistory(file.name, 'Compress PDF', 'compressed.pdf', compressDownloadBlobUrl || result.blobUrl || '');
+      addConversionToHistory(file.name, 'Compress PDF', 'compressed.pdf', result.filename || 'compressed.pdf', compressDownloadBlobUrl || result.blobUrl || '');
       resetCompressForm();
     }, 500);
     
@@ -1122,7 +1125,7 @@ async function performEditPdf() {
 
       document.getElementById('editPdfDownloadBtn').style.display = 'none';
 
-      addConversionToHistory(file.name, 'Edit PDF', file.name, '');
+      addConversionToHistory(file.name, 'Edit PDF', file.name, '', '');
       resetEditPdfForm();
     }, 500);
 
@@ -1256,7 +1259,7 @@ async function performImageConvert() {
 
       imageConvertDownloadBlobUrl = blobUrl;
       
-      addConversionToHistory(file.name, 'Image Convert', safeName, imageConvertDownloadBlobUrl || blobUrl || '');
+      addConversionToHistory(file.name, 'Image Convert', safeName, '', imageConvertDownloadBlobUrl || blobUrl || '');
       resetImageConvertForm();
     }, 500);
     
@@ -1335,7 +1338,7 @@ async function performImageToPdf() {
       document.getElementById('imagePdfDownloadBtn').style.display = 'block';
       document.getElementById('imagePdfDownloadBtn').onclick = () => downloadFile(imagePdfDownloadBlobUrl || result.blobUrl, 'image-to-pdf.pdf');
 
-      addConversionToHistory(file.name, 'Image to PDF', 'image-to-pdf.pdf', imagePdfDownloadBlobUrl || result.blobUrl || '');
+      addConversionToHistory(file.name, 'Image to PDF', 'image-to-pdf.pdf', result.filename || 'image-to-pdf.pdf', imagePdfDownloadBlobUrl || result.blobUrl || '');
       resetImagePdfForm();
     }, 500);
     
@@ -1364,13 +1367,14 @@ function resetImagePdfForm() {
 // HISTORY MANAGEMENT
 // ============================================
 
-function addConversionToHistory(filename, tool, outputFilename, downloadUrl = '') {
+function addConversionToHistory(filename, tool, outputFilename, downloadFilename = '', downloadUrl = '') {
   const conversion = {
     id: Date.now(),
     filename: filename,
     tool: tool,
     timestamp: new Date().toLocaleString(),
     outputFilename: outputFilename,
+    downloadFilename: downloadFilename,
     downloadUrl: downloadUrl,
   };
   
@@ -1422,12 +1426,19 @@ function downloadHistoryFile(conversionId) {
 
   const safeName = buildSafeDownloadName(conversion.displayFilename || conversion.filename, conversion.outputFilename);
 
-  if (!conversion.downloadUrl) {
-    showToast('❌ Download is only available for items converted in this session. Please convert the file again to download it.', 'error');
+  const downloadTarget = conversion.downloadFilename || conversion.outputFilename;
+
+  if (downloadTarget) {
+    downloadFile(`/api/download/${encodeURIComponent(downloadTarget)}`, safeName);
     return;
   }
 
-  downloadFile(conversion.downloadUrl, safeName);
+  if (conversion.downloadUrl) {
+    downloadFile(conversion.downloadUrl, safeName);
+    return;
+  }
+
+  showToast('❌ Download is not available for this history item. Convert the file again to create a downloadable copy.', 'error');
 }
 
 function buildSafeDownloadName(requestedName, fallbackFilename) {
