@@ -896,7 +896,7 @@ async function performSplitPdf() {
       document.getElementById('splitDownloadBtn').style.display = 'block';
       document.getElementById('splitDownloadBtn').onclick = () => downloadFile(splitDownloadBlobUrl || result.blobUrl, 'split.pdf');
 
-      addConversionToHistory(file.name, 'Split PDF', 'split.pdf', result.filename || 'split.pdf', splitDownloadBlobUrl || result.blobUrl || '');
+      addConversionToHistory(file.name, 'Split PDF', 'split.pdf', result.filename || 'split.pdf', splitDownloadBlobUrl || result.blobUrl || '', `Pages: ${pages}`);
       resetSplitForm();
     }, 500);
     
@@ -990,7 +990,7 @@ async function performCompressPdf() {
       document.getElementById('compressDownloadBtn').style.display = 'block';
       document.getElementById('compressDownloadBtn').onclick = () => downloadFile(compressDownloadBlobUrl || result.blobUrl, 'compressed.pdf');
 
-      addConversionToHistory(file.name, 'Compress PDF', 'compressed.pdf', result.filename || 'compressed.pdf', compressDownloadBlobUrl || result.blobUrl || '');
+      addConversionToHistory(file.name, 'Compress PDF', 'compressed.pdf', result.filename || 'compressed.pdf', compressDownloadBlobUrl || result.blobUrl || '', `Target size: ${targetSize} KB`);
       resetCompressForm();
     }, 500);
     
@@ -1125,7 +1125,7 @@ async function performEditPdf() {
 
       document.getElementById('editPdfDownloadBtn').style.display = 'none';
 
-      addConversionToHistory(file.name, 'Edit PDF', file.name, '', '');
+      addConversionToHistory(file.name, 'Edit PDF', file.name, '', '', 'No downloadable output');
       resetEditPdfForm();
     }, 500);
 
@@ -1367,7 +1367,7 @@ function resetImagePdfForm() {
 // HISTORY MANAGEMENT
 // ============================================
 
-function addConversionToHistory(filename, tool, outputFilename, downloadFilename = '', downloadUrl = '') {
+function addConversionToHistory(filename, tool, outputFilename, downloadFilename = '', downloadUrl = '', details = '') {
   const conversion = {
     id: Date.now(),
     filename: filename,
@@ -1376,6 +1376,7 @@ function addConversionToHistory(filename, tool, outputFilename, downloadFilename
     outputFilename: outputFilename,
     downloadFilename: downloadFilename,
     downloadUrl: downloadUrl,
+    details: details,
   };
   
   platformState.conversions.unshift(conversion);
@@ -1402,10 +1403,14 @@ function updateHistory() {
   
   historyBody.innerHTML = platformState.conversions.map(conv => {
     const canDownload = Boolean(conv.downloadFilename || conv.downloadUrl || (conv.outputFilename && conv.tool !== 'Edit PDF'));
+    const detailText = conv.details || conv.outputFilename || '';
 
     return `
     <div class="history-row">
-      <span class="history-col" data-label="File">${conv.displayFilename || conv.filename}</span>
+      <span class="history-col" data-label="File">
+        <span style="display:block; font-weight:600;">${conv.displayFilename || conv.filename}</span>
+        ${detailText ? `<span style="display:block; font-size:12px; color:#6b7280; margin-top:4px;">${detailText}</span>` : ''}
+      </span>
       <span class="history-col" data-label="Tool">${conv.tool}</span>
       <span class="history-col" data-label="Date">${conv.timestamp}</span>
       <div class="history-actions" data-label="Action">
