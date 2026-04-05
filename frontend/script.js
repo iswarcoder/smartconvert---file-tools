@@ -554,11 +554,11 @@ async function performConversion() {
   try {
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('target_format', 'pdf');
+    formData.append('target_format', format);
 
     showProgress('convert', 45, 'Converting...');
 
-    const response = await fetch(`${API_URL}/api/convert`, {
+    const response = await fetch(`${API_URL}/convert`, {
       method: 'POST',
       body: formData
     });
@@ -578,9 +578,10 @@ async function performConversion() {
 
     const blobUrl = URL.createObjectURL(blob);
     convertDownloadBlobUrl = blobUrl;
+    const outputExtension = format || 'docx';
     const link = document.createElement('a');
     link.href = blobUrl;
-    link.download = 'converted.pdf';
+    link.download = `converted.${outputExtension}`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -595,7 +596,7 @@ async function performConversion() {
       document.getElementById('convertDownloadBtn').onclick = () => {
         const repeatLink = document.createElement('a');
         repeatLink.href = convertDownloadBlobUrl || blobUrl;
-        repeatLink.download = 'converted.pdf';
+        repeatLink.download = `converted.${outputExtension}`;
         document.body.appendChild(repeatLink);
         repeatLink.click();
         document.body.removeChild(repeatLink);

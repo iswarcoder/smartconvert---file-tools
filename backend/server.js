@@ -12,30 +12,16 @@ dotenv.config();
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
-const uploadDir = path.join(__dirname, 'uploads');
+const uploadDir = '/tmp';
 
 fs.mkdirSync(uploadDir, { recursive: true });
 
-app.use(cors());
+app.use(cors({ origin: '*' }));
+app.options('*', cors({ origin: '*' }));
 app.use(express.json());
 
-const storage = multer.diskStorage({
-  destination: (req, file, callback) => {
-    callback(null, uploadDir);
-  },
-  filename: (req, file, callback) => {
-    const extension = path.extname(file.originalname).toLowerCase();
-    const basename = path
-      .basename(file.originalname, extension)
-      .replace(/[^a-z0-9_-]+/gi, '_')
-      .replace(/^_+|_+$/g, '') || 'upload';
-
-    callback(null, `${Date.now()}-${basename}${extension}`);
-  }
-});
-
 const upload = multer({
-  storage,
+  dest: uploadDir,
   limits: {
     fileSize: 50 * 1024 * 1024
   }
@@ -52,10 +38,35 @@ function ensureApiKeys() {
   return new ILovePDFApi(publicKey, secretKey);
 }
 
-function getOutputName(inputName) {
+function getSafeBaseName(inputName) {
   const extension = path.extname(inputName).toLowerCase();
-  const basename = path.basename(inputName, extension);
-  return `${basename || 'converted'}.pdf`;
+  return path
+    .basename(inputName, extension)
+    .replace(/[^a-z0-9_-]+/gi, '_')
+    .replace(/^_+|_+$/g, '') || 'converted';
+}
+
+function resolveOutputExtension(targetFormat, usedTask) {
+  if (usedTask === 'officepdf') {
+    return 'pdf';
+  }
+
+  if (targetFormat === 'zip') {
+    return 'zip';
+  }
+
+  return targetFormat || 'docx';
+}
+
+function createOfficeTask(api) {
+  const preferredTask = (process.env.ILOVEPDF_TASK || 'pdfoffice').trim();
+
+  try {
+    return { task: api.newTask(preferredTask), taskName: preferredTask };
+  } catch (error) {
+    console.warn(`ILovePDF task \"${preferredTask}\" is not available, falling back to \"officepdf\".`);
+    return { task: api.newTask('officepdf'), taskName: 'officepdf' };
+  }
 }
 
 app.get('/', (req, res) => {
@@ -77,48 +88,65 @@ app.get('/api/tools', (req, res) => {
   });
 });
 
-app.post('/api/convert', upload.single('file'), async (req, res) => {
-  let uploadedPath = null;
+async function handleConvertRequest(req, res) {
+  const uploadedPath = req.file?.path || null;
+  let outputPath = null;
 
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    console.log(req.file);
+
     const extension = path.extname(req.file.originalname).toLowerCase();
-    if (!['.doc', '.docx', '.odt', '.ppt', '.pptx', '.odp', '.xls', '.xlsx', '.ods'].includes(extension)) {
-      return res.status(400).json({ error: 'Only Office documents are supported' });
+    const targetFormat = String(req.body?.target_format || 'docx').toLowerCase();
+    const allowedInputExtensions = ['.pdf', '.doc', '.docx', '.odt', '.ppt', '.pptx', '.odp', '.xls', '.xlsx', '.ods'];
+
+    if (!allowedInputExtensions.includes(extension)) {
+      return res.status(400).json({ error: 'Unsupported file type' });
     }
 
-    uploadedPath = req.file.path;
-
     const api = ensureApiKeys();
-    const task = api.newTask('officepdf');
+    const { task, taskName } = createOfficeTask(api);
 
     await task.start();
 
-    const officeFile = new ILovePDFFile(uploadedPath);
-    await task.addFile(officeFile);
+    await task.addFile(new ILovePDFFile(req.file.path));
     await task.process();
 
     const convertedData = await task.download();
-    const outputName = getOutputName(req.file.originalname);
+    const outputExtension = resolveOutputExtension(targetFormat, taskName);
+    const outputName = `${getSafeBaseName(req.file.originalname)}.${outputExtension}`;
+    outputPath = path.join(uploadDir, `${Date.now()}-${outputName}`);
 
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename="${outputName}"`);
-    return res.send(Buffer.from(convertedData));
+    await fsPromises.writeFile(outputPath, Buffer.from(convertedData));
+
+    return res.download(outputPath, outputName, async (downloadError) => {
+      if (downloadError) {
+        console.error('Download failed:', downloadError);
+      }
+
+      await Promise.all([
+        uploadedPath ? fsPromises.unlink(uploadedPath).catch(() => {}) : Promise.resolve(),
+        outputPath ? fsPromises.unlink(outputPath).catch(() => {}) : Promise.resolve()
+      ]);
+    });
   } catch (error) {
     console.error('Conversion failed:', error);
+    await Promise.all([
+      uploadedPath ? fsPromises.unlink(uploadedPath).catch(() => {}) : Promise.resolve(),
+      outputPath ? fsPromises.unlink(outputPath).catch(() => {}) : Promise.resolve()
+    ]);
     return res.status(500).json({
       error: 'Conversion failed',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
-  } finally {
-    if (uploadedPath) {
-      await fsPromises.unlink(uploadedPath).catch(() => {});
-    }
   }
-});
+}
+
+app.post('/convert', upload.single('file'), handleConvertRequest);
+app.post('/api/convert', upload.single('file'), handleConvertRequest);
 
 app.use((error, req, res, next) => {
   if (res.headersSent) {
