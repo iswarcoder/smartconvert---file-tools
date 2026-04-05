@@ -64,10 +64,11 @@ const formatLabels = {
 // INITIALIZATION
 // ============================================
 
-document.addEventListener('DOMContentLoaded', () => {
-  fetchAvailableTools();
+document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   loadHistory();
+  await fetchAvailableTools();
+  document.body.classList.add('app-ready');
 });
 
 // ============================================

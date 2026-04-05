@@ -50,6 +50,26 @@ body {
   overflow-x: hidden;
 }
 
+body:not(.app-ready) .navbar,
+body:not(.app-ready) .main-content,
+body:not(.app-ready) footer {
+  visibility: hidden;
+}
+
+body:not(.app-ready) #loadingOverlay {
+  display: flex !important;
+}
+
+body.app-ready .navbar,
+body.app-ready .main-content,
+body.app-ready footer {
+  visibility: visible;
+}
+
+body.app-ready #loadingOverlay {
+  display: none !important;
+}
+
 /* ============================================
    NAVIGATION BAR
    ============================================ */
@@ -970,6 +990,11 @@ body {
   justify-content: center;
   background: rgba(15, 23, 42, 0.45);
   backdrop-filter: blur(10px);
+}
+
+body:not(.app-ready) .loading-overlay {
+  background: linear-gradient(135deg, rgba(248, 249, 255, 0.94) 0%, rgba(240, 242, 255, 0.94) 100%);
+  backdrop-filter: blur(16px);
 }
 
 .loading-card {
