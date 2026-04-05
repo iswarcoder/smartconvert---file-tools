@@ -5,13 +5,13 @@ const fs = require('fs');
 const fsPromises = require('fs/promises');
 const path = require('path');
 const dotenv = require('dotenv');
-const ILovePDFApi = require('@ilovepdf/ilovepdf-nodejs');
-const ILovePDFFile = require('@ilovepdf/ilovepdf-nodejs/ILovePDFFile');
+const ILovePDFApi = require('ilovepdf-nodejs');
+const ILovePDFFile = require('ilovepdf-nodejs/ILovePDFFile');
 
 dotenv.config();
 
 const app = express();
-const port = Number(process.env.PORT || 10000);
+const PORT = Number(process.env.PORT || 3000);
 const uploadDir = path.join(__dirname, 'uploads');
 
 fs.mkdirSync(uploadDir, { recursive: true });
@@ -42,11 +42,11 @@ const upload = multer({
 });
 
 function ensureApiKeys() {
-  const publicKey = process.env.ILOVEPDF_PUBLIC_KEY;
-  const secretKey = process.env.ILOVEPDF_SECRET_KEY;
+  const publicKey = process.env.PUBLIC_KEY;
+  const secretKey = process.env.SECRET_KEY;
 
   if (!publicKey || !secretKey) {
-    throw new Error('ILOVEPDF_PUBLIC_KEY and ILOVEPDF_SECRET_KEY are required');
+    throw new Error('PUBLIC_KEY and SECRET_KEY are required');
   }
 
   return new ILovePDFApi(publicKey, secretKey);
@@ -134,8 +134,8 @@ app.use((error, req, res, next) => {
 });
 
 if (require.main === module) {
-  app.listen(port, '0.0.0.0', () => {
-    console.log(`Server running on port ${port}`);
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
   });
 }
 
