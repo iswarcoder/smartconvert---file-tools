@@ -1,13 +1,15 @@
 services:
   - type: web
     name: smartconvert-file-tools
-    runtime: python
+    runtime: node
     plan: free
     rootDir: backend
-    buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn wsgi:app --bind 0.0.0.0:$PORT --workers 2 --timeout 180
+    buildCommand: npm install
+    startCommand: npm start
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.10.13
-      - key: FLASK_ENV
-        value: production
+      - key: NODE_VERSION
+        value: 20
+      - key: ILOVEPDF_PUBLIC_KEY
+        sync: false
+      - key: ILOVEPDF_SECRET_KEY
+        sync: false
