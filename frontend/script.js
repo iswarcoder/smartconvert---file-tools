@@ -486,6 +486,15 @@ function handleConvertFileSelect(e) {
   if (files.length > 0) {
     const file = files[0];
     const ext = file.name.split('.').pop().toLowerCase();
+    const fileTypeByExtension = {
+      docx: 'word',
+      odt: 'word',
+      xlsx: 'excel',
+      pptx: 'powerpoint',
+      pdf: 'pdf',
+    };
+
+    selectedFileType = fileTypeByExtension[ext] || null;
     
     if (!formatMap[ext]) {
       showToast('❌ Convert supports DOCX, ODT, PPTX, XLSX, and PDF files', 'error');
