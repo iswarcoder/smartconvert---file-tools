@@ -248,7 +248,7 @@ async function writeAndDownloadResponse(res, buffer, downloadName, cleanupPaths)
   });
 }
 
-function handleSingleFileRoute({ tool, allowedExtensions, extraParams }) {
+function handleSingleFileRoute({ tool, allowedExtensions, extraParams, allowPdfInput = false }) {
   return async (req, res) => {
     const uploadedPath = req.file?.path || null;
 
@@ -264,7 +264,7 @@ function handleSingleFileRoute({ tool, allowedExtensions, extraParams }) {
 
       const targetFormat = String(req.body?.target_format || '').toLowerCase();
 
-      if (extension === '.pdf') {
+      if (extension === '.pdf' && !allowPdfInput) {
         return res.status(400).json({
           error: 'Unsupported file type',
           message: 'PDF input is not supported. Upload DOCX, ODT, PPTX, or XLSX to convert to PDF.'
@@ -450,6 +450,7 @@ const convertHandler = handleSingleFileRoute({
 const splitHandler = handleSingleFileRoute({
   tool: 'split',
   allowedExtensions: ['.pdf'],
+  allowPdfInput: true,
   extraParams: (req) => ({
     split_mode: 'ranges',
     ranges: req.body?.pages || req.body?.ranges || '1'
@@ -459,6 +460,7 @@ const splitHandler = handleSingleFileRoute({
 const compressHandler = handleSingleFileRoute({
   tool: 'compress',
   allowedExtensions: ['.pdf'],
+  allowPdfInput: true,
   extraParams: () => ({
     compression_level: 'recommended'
   })
