@@ -15,6 +15,7 @@ const platformState = {
   conversions: JSON.parse(localStorage.getItem('conversions') || '[]'),
   selectedFiles: {
     convert: null,
+    pdfOffice: null,
     merge: [],
     split: null,
     compress: null,
@@ -26,7 +27,9 @@ const platformState = {
 };
 
 let selectedFile = null;
+let selectedPdfOfficeFormat = null;
 let convertDownloadBlobUrl = null;
+let pdfOfficeDownloadBlobUrl = null;
 let mergeDownloadBlobUrl = null;
 let splitDownloadBlobUrl = null;
 let compressDownloadBlobUrl = null;
@@ -236,6 +239,17 @@ function setupEventListeners() {
     document.getElementById('convertBtn').disabled = !isConvertReady();
   });
   document.getElementById('convertBtn')?.addEventListener('click', () => performConversion());
+
+  const pdfOfficeUploadZone = document.getElementById('pdfOfficeUploadZone');
+  const pdfOfficeFileInput = document.getElementById('pdfOfficeFileInput');
+  if (pdfOfficeUploadZone) {
+    pdfOfficeUploadZone.addEventListener('click', () => pdfOfficeFileInput.click());
+    pdfOfficeUploadZone.addEventListener('dragover', (e) => handleDragOver(e));
+    pdfOfficeUploadZone.addEventListener('drop', (e) => handlePdfOfficeDrop(e));
+  }
+
+  pdfOfficeFileInput?.addEventListener('change', (e) => handlePdfOfficeFileSelect(e));
+  document.getElementById('pdfOfficeBtn')?.addEventListener('click', () => performPdfOfficeConversion());
   
   // Merge PDF
   const mergeUploadZone = document.getElementById('mergeUploadZone');
@@ -356,6 +370,14 @@ function handleConvertDrop(e) {
   }
 }
 
+function handlePdfOfficeDrop(e) {
+  handleDragLeave(e);
+  const files = e.dataTransfer.files;
+  if (files.length > 0) {
+    handlePdfOfficeFileSelect({ target: { files: files } });
+  }
+}
+
 function handleMergeDrop(e) {
   handleDragLeave(e);
   const files = e.dataTransfer.files;
@@ -446,9 +468,35 @@ function selectFileType(type) {
   document.getElementById('convertUploadZone').scrollIntoView({ behavior: 'smooth' });
 }
 
+function selectPdfOfficeFormat(format) {
+  selectedPdfOfficeFormat = format;
+  platformState.selectedFiles.pdfOffice = null;
+
+  if (pdfOfficeDownloadBlobUrl) {
+    URL.revokeObjectURL(pdfOfficeDownloadBlobUrl);
+    pdfOfficeDownloadBlobUrl = null;
+  }
+
+  document.getElementById('pdfOfficeDownloadBtn').style.display = 'none';
+
+  document.querySelectorAll('.pdf-office-option').forEach(option => {
+    option.classList.toggle('selected', option.dataset.output === format);
+  });
+
+  const selectedFormatLabel = document.getElementById('pdfOfficeSelectedFormat');
+  if (selectedFormatLabel) {
+    selectedFormatLabel.textContent = format === 'docx' ? 'Word Document (.docx)' : 'PowerPoint Presentation (.pptx)';
+  }
+
+  document.getElementById('pdfOfficeUploadZone').style.display = 'block';
+  document.getElementById('pdfOfficeUploadZone').scrollIntoView({ behavior: 'smooth' });
+  document.getElementById('pdfOfficeBtn').disabled = !isPdfOfficeReady();
+}
+
 function resetConvertForm() {
   selectedFileType = null;
   platformState.selectedFiles.convert = null;
+  resetPdfOfficeForm();
   
   // Reset file type selection
   document.querySelectorAll('.file-type-option').forEach(option => {
@@ -473,6 +521,34 @@ function resetConvertForm() {
   
   // Hide progress
   hideProgress('convert');
+}
+
+function resetPdfOfficeForm(keepDownloadButton = false) {
+  selectedPdfOfficeFormat = null;
+  platformState.selectedFiles.pdfOffice = null;
+
+  document.querySelectorAll('.pdf-office-option').forEach(option => {
+    option.classList.remove('selected');
+  });
+
+  const selectedFormatLabel = document.getElementById('pdfOfficeSelectedFormat');
+  if (selectedFormatLabel) {
+    selectedFormatLabel.textContent = '-- Select PDF output --';
+  }
+
+  if (pdfOfficeDownloadBlobUrl) {
+    URL.revokeObjectURL(pdfOfficeDownloadBlobUrl);
+    pdfOfficeDownloadBlobUrl = null;
+  }
+
+  document.getElementById('pdfOfficeFileInput').value = '';
+  document.getElementById('pdfOfficeFileInfo').style.display = 'none';
+  document.getElementById('pdfOfficeUploadZone').style.display = 'none';
+  document.getElementById('pdfOfficeBtn').disabled = true;
+  if (!keepDownloadButton) {
+    document.getElementById('pdfOfficeDownloadBtn').style.display = 'none';
+  }
+  hideProgress('pdfOffice');
 }
 
 // ============================================
@@ -510,6 +586,24 @@ function handleConvertFileSelect(e) {
   }
 }
 
+function handlePdfOfficeFileSelect(e) {
+  const files = e.target.files;
+  if (files.length > 0) {
+    const file = files[0];
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      showToast('❌ Please select a PDF file', 'error');
+      return;
+    }
+
+    platformState.selectedFiles.pdfOffice = file;
+
+    document.getElementById('pdfOfficeFileName').textContent = file.name;
+    document.getElementById('pdfOfficeFileSize').textContent = formatBytes(file.size);
+    document.getElementById('pdfOfficeFileInfo').style.display = 'block';
+    document.getElementById('pdfOfficeBtn').disabled = !isPdfOfficeReady();
+  }
+}
+
 function updateConvertFormatSelector(formats) {
   const select = document.getElementById('convertFormatSelect');
   select.innerHTML = '<option value="">-- Select format --</option>';
@@ -542,6 +636,10 @@ function updateConvertFormatSelector(formats) {
 
 function isConvertReady() {
   return platformState.selectedFiles.convert && document.getElementById('convertFormatSelect').value;
+}
+
+function isPdfOfficeReady() {
+  return platformState.selectedFiles.pdfOffice && selectedPdfOfficeFormat;
 }
 
 function showLoading(message = 'Processing...') {
@@ -701,6 +799,68 @@ async function performConversion() {
     showToast('❌ Error: ' + error.message, 'error');
   } finally {
     document.getElementById('convertBtn').disabled = false;
+  }
+}
+
+async function performPdfOfficeConversion() {
+  const file = platformState.selectedFiles.pdfOffice;
+  const format = selectedPdfOfficeFormat;
+
+  if (!file || !format) {
+    showToast('❌ Please select a PDF and output format', 'error');
+    return;
+  }
+
+  document.getElementById('pdfOfficeBtn').disabled = true;
+  showProgress('pdfOffice', 20, 'Uploading PDF...');
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('target_format', format);
+
+    showProgress('pdfOffice', 50, 'Converting PDF...');
+
+    const result = await submitFileRequest('/pdf-to-office', formData, {
+      loadingMessage: format === 'docx' ? 'Converting PDF to Word...' : 'Converting PDF to PowerPoint...',
+      defaultFilename: format === 'docx' ? 'converted.docx' : 'converted.pptx'
+    });
+
+    const blobUrl = result?.blobUrl || pdfOfficeDownloadBlobUrl;
+
+    if (result?.blobUrl) {
+      if (pdfOfficeDownloadBlobUrl) {
+        URL.revokeObjectURL(pdfOfficeDownloadBlobUrl);
+      }
+      pdfOfficeDownloadBlobUrl = result.blobUrl;
+    }
+
+    showProgress('pdfOffice', 100, '✅ PDF conversion complete!');
+
+    setTimeout(() => {
+      hideProgress('pdfOffice');
+      showToast(format === 'docx' ? '✅ PDF converted to Word successfully!' : '✅ PDF converted to PowerPoint successfully!', 'success');
+
+      const outputFilename = result?.filename || (format === 'docx' ? 'converted.docx' : 'converted.pptx');
+      document.getElementById('pdfOfficeDownloadBtn').style.display = 'block';
+      document.getElementById('pdfOfficeDownloadBtn').onclick = () => downloadFile(pdfOfficeDownloadBlobUrl || blobUrl, outputFilename);
+
+      addConversionToHistory(
+        file.name,
+        format === 'docx' ? 'PDF to Word file' : 'PDF to PowerPoint',
+        outputFilename,
+        outputFilename,
+        pdfOfficeDownloadBlobUrl || blobUrl || '',
+        'Input: PDF'
+      );
+
+      resetPdfOfficeForm(true);
+    }, 500);
+  } catch (error) {
+    showProgress('pdfOffice', 0, '❌ ' + error.message);
+    showToast('❌ Error: ' + error.message, 'error');
+  } finally {
+    document.getElementById('pdfOfficeBtn').disabled = false;
   }
 }
 

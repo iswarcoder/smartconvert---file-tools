@@ -430,11 +430,22 @@ body.app-ready #loadingOverlay {
 }
 
 .convert-example-card {
+  appearance: none;
+  text-align: left;
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.06), rgba(118, 75, 162, 0.04));
   border: 1px solid rgba(102, 126, 234, 0.14);
   border-radius: var(--radius-lg);
   padding: 20px 18px;
   box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.convert-example-card:hover,
+.convert-example-card.selected {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-md);
+  border-color: rgba(102, 126, 234, 0.3);
 }
 
 .convert-example-card h4 {
@@ -460,6 +471,62 @@ body.app-ready #loadingOverlay {
   color: #4f5bd5;
   font-size: 12px;
   font-weight: 700;
+}
+
+.pdf-conversion-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 12px 0 22px;
+  padding: 16px 18px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(255, 107, 107, 0.08), rgba(245, 87, 108, 0.06));
+  border: 1px solid rgba(245, 87, 108, 0.12);
+}
+
+.pdf-conversion-logo {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ff8a5b 100%);
+  color: white;
+  flex-shrink: 0;
+  box-shadow: 0 10px 24px rgba(255, 107, 107, 0.24);
+}
+
+.pdf-conversion-logo svg {
+  width: 28px;
+  height: 28px;
+  stroke-width: 1.8;
+}
+
+.pdf-conversion-head h3 {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.pdf-conversion-head p {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.pdf-office-selected-format {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  padding: 13px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
 }
 
 .file-type-options {
@@ -771,6 +838,10 @@ body.app-ready #loadingOverlay {
 
   .convert-example-grid {
     grid-template-columns: 1fr;
+  }
+
+  .pdf-conversion-head {
+    align-items: flex-start;
   }
 }
 

@@ -13,6 +13,8 @@ const PORT = Number(process.env.PORT || 3000);
 const TEMP_DIR = '/tmp';
 const OUTPUT_DIR = path.join(__dirname, 'outputs');
 const API_ROOT = 'https://api.ilovepdf.com/v1';
+const CLOUDCONVERT_API_ROOT = 'https://api.cloudconvert.com/v2';
+const CLOUDCONVERT_SYNC_API_ROOT = 'https://sync.api.cloudconvert.com/v2';
 const upload = multer({
   dest: TEMP_DIR,
   limits: {
@@ -82,6 +84,150 @@ async function cleanupFiles(filePaths) {
       .filter(Boolean)
       .map((filePath) => fsPromises.unlink(filePath).catch(() => {}))
   );
+}
+
+function requireCloudConvertToken() {
+  const cloudConvertToken = process.env.CLOUDCONVERT_TOKEN;
+
+  if (!cloudConvertToken) {
+    throw new Error('Missing CLOUDCONVERT_TOKEN. Add it in Render environment variables or backend/.env for local testing.');
+  }
+
+  return cloudConvertToken;
+}
+
+async function cloudConvertFetch(url, options = {}) {
+  const token = requireCloudConvertToken();
+  const headers = new Headers(options.headers || {});
+  headers.set('Authorization', `Bearer ${token}`);
+
+  return fetch(url, {
+    ...options,
+    headers
+  });
+}
+
+function cloudConvertErrorMessage(data, fallbackMessage) {
+  const detailMessages = Array.isArray(data?.errors)
+    ? data.errors.map((item) => item?.message).filter(Boolean)
+    : [];
+
+  return data?.message || data?.error || detailMessages.join('; ') || fallbackMessage;
+}
+
+async function uploadCloudConvertFile(uploadForm, file) {
+  if (!uploadForm?.url) {
+    throw new Error('CloudConvert upload form is missing');
+  }
+
+  const buffer = await fsPromises.readFile(file.path);
+  const formData = new FormData();
+
+  Object.entries(uploadForm.parameters || {}).forEach(([key, value]) => {
+    formData.append(key, value);
+  });
+
+  formData.append('file', new Blob([buffer]), file.originalname);
+
+  const response = await fetch(uploadForm.url, {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(text || 'CloudConvert upload failed');
+  }
+}
+
+async function executePdfToOfficeWorkflow(file, outputFormat) {
+  const createResponse = await cloudConvertFetch(`${CLOUDCONVERT_API_ROOT}/jobs`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      tasks: {
+        'import-my-file': {
+          operation: 'import/upload'
+        },
+        'convert-my-file': {
+          operation: 'convert',
+          input: 'import-my-file',
+          input_format: 'pdf',
+          output_format: outputFormat,
+          engine: 'office'
+        },
+        'export-my-file': {
+          operation: 'export/url',
+          input: 'convert-my-file'
+        }
+      }
+    })
+  });
+
+  const createData = await createResponse.json().catch(() => ({}));
+
+  if (!createResponse.ok) {
+    throw new Error(cloudConvertErrorMessage(createData, 'Failed to create CloudConvert job'));
+  }
+
+  const job = createData.data || createData;
+  const jobId = job?.id;
+
+  if (!jobId) {
+    throw new Error('CloudConvert job id missing');
+  }
+
+  const importTask = Array.isArray(job.tasks)
+    ? job.tasks.find((task) => task.operation === 'import/upload' || task.name === 'import-my-file')
+    : null;
+  const uploadForm = importTask?.result?.form || importTask?.payload?.form || null;
+
+  await uploadCloudConvertFile(uploadForm, file);
+
+  const waitResponse = await cloudConvertFetch(`${CLOUDCONVERT_SYNC_API_ROOT}/jobs/${jobId}?include=tasks`, {
+    method: 'GET'
+  });
+
+  const waitData = await waitResponse.json().catch(() => ({}));
+
+  if (!waitResponse.ok) {
+    throw new Error(cloudConvertErrorMessage(waitData, 'CloudConvert conversion failed'));
+  }
+
+  const finishedJob = waitData.data || waitData;
+
+  if (finishedJob.status === 'error') {
+    throw new Error(cloudConvertErrorMessage(finishedJob, 'CloudConvert conversion failed'));
+  }
+
+  const exportTask = Array.isArray(finishedJob.tasks)
+    ? finishedJob.tasks.find((task) => task.operation === 'export/url' || task.name === 'export-my-file')
+    : null;
+  const exportFile = exportTask?.result?.files?.[0] || null;
+
+  if (!exportFile?.url) {
+    throw new Error('CloudConvert output file missing');
+  }
+
+  const downloadResponse = await fetch(exportFile.url);
+
+  if (!downloadResponse.ok) {
+    const text = await downloadResponse.text().catch(() => '');
+    throw new Error(text || 'CloudConvert download failed');
+  }
+
+  const arrayBuffer = await downloadResponse.arrayBuffer();
+
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    processResponse: {
+      download_filename: exportFile.filename || `converted.${outputFormat}`,
+      output_extensions: [outputFormat],
+      job_id: jobId
+    }
+  };
 }
 
 async function getAuthToken() {
@@ -373,6 +519,41 @@ function handleEditRoute() {
   };
 }
 
+function handlePdfToOfficeRoute() {
+  return async (req, res) => {
+    const uploadedPath = req.file?.path || null;
+
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      if (path.extname(req.file.originalname).toLowerCase() !== '.pdf') {
+        return res.status(400).json({ error: 'Unsupported file type', message: 'Upload a PDF file to convert to Word or PowerPoint.' });
+      }
+
+      const targetFormat = String(req.body?.target_format || '').toLowerCase();
+      if (!['docx', 'pptx'].includes(targetFormat)) {
+        return res.status(400).json({ error: 'Unsupported file type', message: 'Select DOCX or PPTX as the output format.' });
+      }
+
+      const { buffer, processResponse } = await executePdfToOfficeWorkflow(req.file, targetFormat);
+      const downloadName = processResponse?.download_filename
+        ? sanitizeFileName(processResponse.download_filename)
+        : `${baseName(req.file.originalname)}.${outputExtensionFromProcess(processResponse, targetFormat)}`;
+
+      return writeAndDownloadResponse(res, buffer, downloadName, [uploadedPath]);
+    } catch (error) {
+      console.error('pdf-to-office failed:', error);
+      await cleanupFiles([uploadedPath]);
+      return res.status(500).json({
+        error: 'pdf-to-office failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  };
+}
+
 app.get('/', (req, res) => {
   res.send('Backend running 🚀');
 });
@@ -502,6 +683,9 @@ app.post('/api/edit', upload.fields([
   { name: 'file', maxCount: 1 },
   { name: 'image', maxCount: 1 }
 ]), handleEditRoute());
+
+app.post('/pdf-to-office', upload.single('file'), handlePdfToOfficeRoute());
+app.post('/api/pdf-to-office', upload.single('file'), handlePdfToOfficeRoute());
 
 app.get('/api/download/:filename', async (req, res) => {
   try {

@@ -99,18 +99,74 @@
         <div class="convert-examples">
           <h3>PDF conversion examples</h3>
           <div class="convert-example-grid">
-            <div class="convert-example-card">
-              <span class="convert-example-badge">Example</span>
+            <button type="button" class="convert-example-card pdf-office-option" data-output="docx" onclick="selectPdfOfficeFormat('docx')">
+              <span class="convert-example-badge">PDF</span>
               <h4>PDF to Word file</h4>
               <p>Convert a PDF into an editable <strong>.docx</strong> document.</p>
-            </div>
-            <div class="convert-example-card">
-              <span class="convert-example-badge">Example</span>
+            </button>
+            <button type="button" class="convert-example-card pdf-office-option" data-output="pptx" onclick="selectPdfOfficeFormat('pptx')">
+              <span class="convert-example-badge">PDF</span>
               <h4>PDF to PowerPoint</h4>
               <p>Turn a PDF into a presentation-ready <strong>.pptx</strong> file.</p>
+            </button>
+          </div>
+        </div>
+
+        <div class="pdf-conversion-head">
+          <span class="pdf-conversion-logo" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M14 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7z"></path>
+              <polyline points="14 2 14 7 19 7"></polyline>
+              <path d="M8 12h8"></path>
+              <path d="M8 15h8"></path>
+            </svg>
+          </span>
+          <div>
+            <h3>PDF to Office</h3>
+            <p>Select a PDF output above, then upload your PDF to convert it.</p>
+          </div>
+        </div>
+
+        <div class="upload-zone" id="pdfOfficeUploadZone" style="display: none;">
+          <div class="upload-content">
+            <svg class="upload-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <p class="upload-text">Drag & drop your PDF file here</p>
+            <p class="upload-subtext">or click to browse</p>
+            <input type="file" id="pdfOfficeFileInput" class="file-input" accept=".pdf">
+          </div>
+        </div>
+
+        <div class="file-info-section" id="pdfOfficeFileInfo" style="display: none;">
+          <div class="file-info">
+            <div class="file-icon">📄</div>
+            <div class="file-details">
+              <p class="file-name" id="pdfOfficeFileName">file.pdf</p>
+              <p class="file-size" id="pdfOfficeFileSize">2.5 MB</p>
             </div>
           </div>
         </div>
+
+        <div class="format-selector">
+          <label class="format-label">Selected output:</label>
+          <div class="pdf-office-selected-format" id="pdfOfficeSelectedFormat">-- Select PDF output --</div>
+        </div>
+
+        <div class="progress-section" id="pdfOfficeProgress" style="display: none;">
+          <div class="progress-bar-container">
+            <div class="progress-bar">
+              <div class="progress-fill" id="pdfOfficeProgressFill"></div>
+            </div>
+            <span class="progress-text" id="pdfOfficeProgressText">0%</span>
+          </div>
+          <p class="progress-status" id="pdfOfficeProgressStatus">Converting PDF...</p>
+        </div>
+
+        <button class="btn btn-action" id="pdfOfficeBtn" disabled>Convert PDF</button>
+        <button class="btn btn-download" id="pdfOfficeDownloadBtn" style="display: none;">⬇️ Download</button>
 
         <div class="upload-zone" id="convertUploadZone" style="display: none;">
           <div class="upload-content">
