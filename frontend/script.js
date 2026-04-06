@@ -1059,6 +1059,7 @@ function handleSplitFileSelect(e) {
     
     document.getElementById('splitFileName').textContent = file.name;
     document.getElementById('splitFileSize').textContent = formatBytes(file.size);
+    document.getElementById('splitPageCount').textContent = 'Use ranges like 2-6,7-8. Pages outside the PDF will be ignored.';
     document.getElementById('splitFileInfo').style.display = 'block';
     document.getElementById('splitBtn').disabled = !isSplitReady();
   }
@@ -1128,6 +1129,7 @@ function resetSplitForm() {
   document.getElementById('splitFileInput').value = '';
   document.getElementById('splitPagesInput').value = '';
   document.getElementById('splitFileInfo').style.display = 'none';
+  document.getElementById('splitPageCount').textContent = '';
   document.getElementById('splitBtn').disabled = true;
   document.getElementById('splitDownloadBtn').style.display = 'none';
 }

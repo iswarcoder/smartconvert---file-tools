@@ -68,6 +68,64 @@ function isJpegFile(file) {
   return extension === '.jpg' || extension === '.jpeg' || mimeType === 'image/jpeg';
 }
 
+async function getPdfPageCount(filePath) {
+  const pdfBytes = await fsPromises.readFile(filePath);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+  return pdfDoc.getPageCount();
+}
+
+function normalizeSplitRanges(rawInput, pageCount) {
+  const normalizedInput = String(rawInput || '')
+    .toLowerCase()
+    .replace(/\bthen\b/g, ',')
+    .replace(/\band\b/g, ',')
+    .replace(/\bto\b/g, '-')
+    .replace(/[;|\n\r]+/g, ',');
+
+  const ranges = [];
+
+  normalizedInput.split(',').forEach((part) => {
+    const numbers = (part.match(/\d+/g) || []).map((value) => Number.parseInt(value, 10)).filter(Number.isFinite);
+
+    if (numbers.length === 0) {
+      return;
+    }
+
+    let start = numbers[0];
+    let end = numbers.length > 1 ? numbers[1] : numbers[0];
+
+    if (start > end) {
+      [start, end] = [end, start];
+    }
+
+    start = Math.max(1, start);
+    end = Math.min(pageCount, end);
+
+    if (start > pageCount || end < 1 || start > end) {
+      return;
+    }
+
+    ranges.push([start, end]);
+  });
+
+  ranges.sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+
+  const mergedRanges = [];
+
+  ranges.forEach(([start, end]) => {
+    const previousRange = mergedRanges[mergedRanges.length - 1];
+
+    if (previousRange && start <= previousRange[1] + 1) {
+      previousRange[1] = Math.max(previousRange[1], end);
+      return;
+    }
+
+    mergedRanges.push([start, end]);
+  });
+
+  return mergedRanges.map(([start, end]) => (start === end ? `${start}` : `${start}-${end}`)).join(',');
+}
+
 async function addTextOverlay(pdfDoc, findText, replaceText) {
   if (!findText || !replaceText) {
     return;
@@ -579,10 +637,12 @@ function handleSingleFileRoute({ tool, allowedExtensions, extraParams, allowPdfI
         });
       }
 
+      const resolvedExtraParams = typeof extraParams === 'function' ? await extraParams(req) : (extraParams || {});
+
       const { buffer, processResponse } = await executeToolWorkflow({
         tool,
         files: [req.file],
-        extraParams: typeof extraParams === 'function' ? extraParams(req) : (extraParams || {})
+        extraParams: resolvedExtraParams
       });
 
       const fallbackExtension = tool === 'imagepdf' ? 'pdf' : extension.replace(/^\./, '') || 'pdf';
@@ -785,10 +845,28 @@ const splitHandler = handleSingleFileRoute({
   tool: 'split',
   allowedExtensions: ['.pdf'],
   allowPdfInput: true,
-  extraParams: (req) => ({
-    split_mode: 'ranges',
-    ranges: req.body?.pages || req.body?.ranges || '1'
-  })
+  extraParams: async (req) => {
+    const uploadedPath = req.file?.path;
+
+    if (!uploadedPath) {
+      return {
+        split_mode: 'ranges',
+        ranges: '1'
+      };
+    }
+
+    const pageCount = await getPdfPageCount(uploadedPath);
+    const normalizedRanges = normalizeSplitRanges(req.body?.pages || req.body?.ranges || '1', pageCount);
+
+    if (!normalizedRanges) {
+      throw new Error(`No valid pages to split. Your PDF has ${pageCount} pages.`);
+    }
+
+    return {
+      split_mode: 'ranges',
+      ranges: normalizedRanges
+    };
+  }
 });
 
 const compressHandler = handleSingleFileRoute({
