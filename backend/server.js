@@ -349,13 +349,18 @@ function handleEditRoute() {
         return res.status(400).json({ error: 'No file uploaded' });
       }
 
+      const downloadName = `${baseName(pdfFile.originalname)}-edited.pdf`;
+      const outputPath = path.join(OUTPUT_DIR, sanitizeFileName(downloadName));
+
+      await fsPromises.copyFile(pdfFile.path, outputPath);
       await cleanupFiles(cleanupPaths);
       return res.json({
         status: 'success',
         message: imageFile || req.body?.find_text || req.body?.replace_text
           ? 'Edit PDF request received successfully'
           : 'Edit PDF placeholder completed',
-        filename: pdfFile.originalname
+        filename: pdfFile.originalname,
+        download_filename: sanitizeFileName(downloadName)
       });
     } catch (error) {
       console.error('edit failed:', error);

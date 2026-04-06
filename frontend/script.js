@@ -1124,10 +1124,14 @@ async function performEditPdf() {
       hideProgress('editPdf');
       showToast(data.message || '✅ Edit PDF placeholder completed', 'success');
 
-      document.getElementById('editPdfDownloadBtn').style.display = 'none';
+      const downloadFilename = data.download_filename || `${file.name.replace(/\.pdf$/i, '')}-edited.pdf`;
+      document.getElementById('editPdfDownloadBtn').style.display = 'block';
+      document.getElementById('editPdfDownloadBtn').onclick = () => {
+        downloadFile(`/api/download/${encodeURIComponent(downloadFilename)}`, downloadFilename);
+      };
 
-      addConversionToHistory(file.name, 'Edit PDF', file.name, '', '', 'No downloadable output');
-      resetEditPdfForm();
+      addConversionToHistory(file.name, 'Edit PDF', downloadFilename, downloadFilename, '', 'Download ready');
+      resetEditPdfForm(true);
     }, 500);
 
   } catch (error) {
@@ -1138,7 +1142,7 @@ async function performEditPdf() {
   }
 }
 
-function resetEditPdfForm() {
+function resetEditPdfForm(keepDownloadButton = false) {
   platformState.selectedFiles.editPdf = null;
   platformState.selectedFiles.editPdfImage = null;
 
@@ -1154,7 +1158,9 @@ function resetEditPdfForm() {
   document.getElementById('editPdfFileInfo').style.display = 'none';
   document.getElementById('editPdfImageInfo').style.display = 'none';
   document.getElementById('editPdfBtn').disabled = true;
-  document.getElementById('editPdfDownloadBtn').style.display = 'none';
+  if (!keepDownloadButton) {
+    document.getElementById('editPdfDownloadBtn').style.display = 'none';
+  }
   hideProgress('editPdf');
 }
 

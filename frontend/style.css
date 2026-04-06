@@ -28,7 +28,7 @@
   --radius-md: 16px;
   --radius-lg: 24px;
   
-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition: transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease, opacity 0.2s ease;
 }
 
 * {
@@ -251,11 +251,11 @@ body.app-ready #loadingOverlay {
    ============================================ */
 
 .view-section {
-  animation: fade-in 0.5s ease-out;
+  animation: fade-in 0.32s ease-out;
 }
 
 .tool-view {
-  animation: fade-in 0.5s ease-out;
+  animation: fade-in 0.32s ease-out;
 }
 
 .tool-header {
@@ -295,6 +295,12 @@ body.app-ready #loadingOverlay {
   box-shadow: var(--shadow-md);
   max-width: 800px;
   margin: 0 auto;
+  contain: layout paint;
+  transform: translateZ(0);
+}
+
+#editPdfView .tool-content {
+  max-width: 920px;
 }
 
 /* ============================================
@@ -406,6 +412,56 @@ body.app-ready #loadingOverlay {
   margin-bottom: 24px;
 }
 
+.convert-examples {
+  margin: 0 0 28px;
+}
+
+.convert-examples h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+.convert-example-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.convert-example-card {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.06), rgba(118, 75, 162, 0.04));
+  border: 1px solid rgba(102, 126, 234, 0.14);
+  border-radius: var(--radius-lg);
+  padding: 20px 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.convert-example-card h4 {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 12px 0 8px;
+}
+
+.convert-example-card p {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.convert-example-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(102, 126, 234, 0.12);
+  color: #4f5bd5;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .file-type-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -512,7 +568,7 @@ body.app-ready #loadingOverlay {
 .edit-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 /* ============================================
@@ -610,6 +666,7 @@ body.app-ready #loadingOverlay {
   background: var(--primary-gradient);
   transition: width 0.3s ease;
   width: 0%;
+  will-change: width;
 }
 
 .progress-text {
@@ -709,6 +766,10 @@ body.app-ready #loadingOverlay {
 
 @media (max-width: 768px) {
   .edit-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .convert-example-grid {
     grid-template-columns: 1fr;
   }
 }
