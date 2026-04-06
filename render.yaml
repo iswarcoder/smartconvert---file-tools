@@ -13,5 +13,5 @@ services:
         sync: false
       - key: SECRET_KEY
         sync: false
-      - key: CLOUDCONVERT_TOKEN
+      - key: CLOUDCONVERT_KEY
         sync: false

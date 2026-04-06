@@ -172,7 +172,7 @@ function applyCloudConvertAvailability() {
       notice.textContent = '';
     } else {
       notice.style.display = 'block';
-      notice.textContent = 'CloudConvert is not configured on the server yet. Add CLOUDCONVERT_TOKEN in Render to enable PDF to Word and PDF to PowerPoint.';
+      notice.textContent = 'CloudConvert is not configured on the server yet. Add CLOUDCONVERT_KEY in Render to enable PDF to Word and PDF to PowerPoint.';
     }
   }
 }
@@ -503,7 +503,7 @@ function selectFileType(type) {
 
 function selectPdfOfficeFormat(format) {
   if (!cloudConvertConfigured) {
-    showToast('❌ CloudConvert is not configured. Add CLOUDCONVERT_TOKEN in Render to enable PDF to Office conversion.', 'error');
+    showToast('❌ CloudConvert is not configured. Add CLOUDCONVERT_KEY in Render to enable PDF to Office conversion.', 'error');
     return;
   }
 
@@ -842,7 +842,7 @@ async function performConversion() {
 
 async function performPdfOfficeConversion() {
   if (!cloudConvertConfigured) {
-    showToast('❌ CloudConvert is not configured. Add CLOUDCONVERT_TOKEN in Render to enable this conversion.', 'error');
+    showToast('❌ CloudConvert is not configured. Add CLOUDCONVERT_KEY in Render to enable this conversion.', 'error');
     return;
   }
 
