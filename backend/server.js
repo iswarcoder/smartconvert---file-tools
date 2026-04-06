@@ -112,7 +112,11 @@ function cloudConvertErrorMessage(data, fallbackMessage) {
     ? data.errors.map((item) => item?.message).filter(Boolean)
     : [];
 
-  const rawMessage = data?.message || data?.error || detailMessages.join('; ') || fallbackMessage;
+  const taskMessages = Array.isArray(data?.tasks)
+    ? data.tasks.map((task) => task?.message).filter(Boolean)
+    : [];
+
+  const rawMessage = data?.message || data?.error || detailMessages.join('; ') || taskMessages.join('; ') || fallbackMessage;
 
   if (/invalid scope/i.test(rawMessage)) {
     return 'CloudConvert API key scope is invalid. Create a CloudConvert API key with task.read and task.write scopes, then update CLOUDCONVERT_KEY in Render.';
@@ -161,8 +165,7 @@ async function executePdfToOfficeWorkflow(file, outputFormat) {
           operation: 'convert',
           input: 'import-my-file',
           input_format: 'pdf',
-          output_format: outputFormat,
-          engine: 'office'
+          output_format: outputFormat
         },
         'export-my-file': {
           operation: 'export/url',
@@ -214,7 +217,7 @@ async function executePdfToOfficeWorkflow(file, outputFormat) {
   const exportFile = exportTask?.result?.files?.[0] || null;
 
   if (!exportFile?.url) {
-    throw new Error('CloudConvert output file missing');
+    throw new Error(cloudConvertErrorMessage(finishedJob, 'CloudConvert output file missing'));
   }
 
   const downloadResponse = await fetch(exportFile.url);
