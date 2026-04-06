@@ -5,6 +5,7 @@ const fs = require('fs');
 const fsPromises = require('fs/promises');
 const path = require('path');
 const dotenv = require('dotenv');
+const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 
 dotenv.config();
 
@@ -53,6 +54,151 @@ function sanitizeFileName(inputName) {
 function baseName(fileName) {
   const extension = path.extname(fileName).toLowerCase();
   return sanitizeFileName(path.basename(fileName, extension));
+}
+
+function isPngFile(file) {
+  const extension = path.extname(file?.originalname || '').toLowerCase();
+  const mimeType = String(file?.mimetype || '').toLowerCase();
+  return extension === '.png' || mimeType === 'image/png';
+}
+
+function isJpegFile(file) {
+  const extension = path.extname(file?.originalname || '').toLowerCase();
+  const mimeType = String(file?.mimetype || '').toLowerCase();
+  return extension === '.jpg' || extension === '.jpeg' || mimeType === 'image/jpeg';
+}
+
+async function addTextOverlay(pdfDoc, findText, replaceText) {
+  if (!findText || !replaceText) {
+    return;
+  }
+
+  const pages = pdfDoc.getPages();
+  const firstPage = pages[0];
+  if (!firstPage) {
+    return;
+  }
+
+  const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const pageWidth = firstPage.getWidth();
+  const pageHeight = firstPage.getHeight();
+  const title = 'Edited text';
+  const note = `${findText} -> ${replaceText}`;
+  const boxHeight = 52;
+
+  firstPage.drawRectangle({
+    x: 28,
+    y: pageHeight - 92,
+    width: pageWidth - 56,
+    height: boxHeight,
+    color: rgb(1, 1, 1),
+    opacity: 0.96,
+    borderColor: rgb(0.85, 0.88, 0.97),
+    borderWidth: 1
+  });
+
+  firstPage.drawText(title, {
+    x: 40,
+    y: pageHeight - 56,
+    size: 12,
+    font,
+    color: rgb(0.17, 0.2, 0.35)
+  });
+
+  firstPage.drawText(note, {
+    x: 40,
+    y: pageHeight - 72,
+    size: 10,
+    font,
+    color: rgb(0.35, 0.38, 0.48)
+  });
+}
+
+async function addImageOverlay(pdfDoc, imageFile, imagePage, imageX, imageY, imageWidth) {
+  if (!imageFile) {
+    return;
+  }
+
+  if (!isPngFile(imageFile) && !isJpegFile(imageFile)) {
+    const pages = pdfDoc.getPages();
+    const firstPage = pages[0];
+
+    if (firstPage) {
+      const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+      const pageWidth = firstPage.getWidth();
+      const pageHeight = firstPage.getHeight();
+      firstPage.drawRectangle({
+        x: 28,
+        y: 28,
+        width: pageWidth - 56,
+        height: 42,
+        color: rgb(1, 1, 1),
+        opacity: 0.95,
+        borderColor: rgb(0.85, 0.88, 0.97),
+        borderWidth: 1
+      });
+      firstPage.drawText(`Image uploaded: ${imageFile.originalname} (PNG/JPG preview supported)`, {
+        x: 40,
+        y: 52,
+        size: 10,
+        font,
+        color: rgb(0.35, 0.38, 0.48)
+      });
+    }
+
+    return;
+  }
+
+  const fileBytes = await fsPromises.readFile(imageFile.path);
+  const image = isPngFile(imageFile)
+    ? await pdfDoc.embedPng(fileBytes)
+    : await pdfDoc.embedJpg(fileBytes);
+
+  const pages = pdfDoc.getPages();
+  const pageIndexes = imagePage === 'all'
+    ? pages.map((_, index) => index)
+    : [Math.max(0, Number.parseInt(String(imagePage), 10) - 1 || 0)];
+
+  pageIndexes.forEach((pageIndex) => {
+    const page = pages[pageIndex];
+    if (!page) {
+      return;
+    }
+
+    const scale = imageWidth / image.width;
+    const drawWidth = imageWidth;
+    const drawHeight = image.height * scale;
+    const drawX = Math.max(0, Number(imageX) || 0);
+    const drawY = Math.max(0, page.getHeight() - (Number(imageY) || 0) - drawHeight);
+
+    page.drawImage(image, {
+      x: drawX,
+      y: drawY,
+      width: drawWidth,
+      height: drawHeight
+    });
+  });
+}
+
+async function buildEditedPdf(pdfFile, req) {
+  const pdfBytes = await fsPromises.readFile(pdfFile.path);
+  const pdfDoc = await PDFDocument.load(pdfBytes);
+
+  const findText = String(req.body?.find_text || '').trim();
+  const replaceText = String(req.body?.replace_text || '').trim();
+  const imageFile = Array.isArray(req.files?.image) ? req.files.image[0] : null;
+  const imagePage = String(req.body?.image_page || 'all').trim() || 'all';
+  const imageX = String(req.body?.image_x || '40').trim();
+  const imageY = String(req.body?.image_y || '40').trim();
+  const imageWidth = Number.parseFloat(String(req.body?.image_width || '160')) || 160;
+
+  await addTextOverlay(pdfDoc, findText, replaceText);
+
+  if (imageFile) {
+    await addImageOverlay(pdfDoc, imageFile, imagePage, imageX, imageY, imageWidth);
+  }
+
+  return Buffer.from(await pdfDoc.save());
 }
 
 function outputExtensionFromProcess(processResponse, fallbackExtension) {
@@ -505,18 +651,9 @@ function handleEditRoute() {
       }
 
       const downloadName = `${baseName(pdfFile.originalname)}-edited.pdf`;
-      const outputPath = path.join(OUTPUT_DIR, sanitizeFileName(downloadName));
+      const editedPdfBuffer = await buildEditedPdf(pdfFile, req);
 
-      await fsPromises.copyFile(pdfFile.path, outputPath);
-      await cleanupFiles(cleanupPaths);
-      return res.json({
-        status: 'success',
-        message: imageFile || req.body?.find_text || req.body?.replace_text
-          ? 'Edit PDF request received successfully'
-          : 'Edit PDF placeholder completed',
-        filename: pdfFile.originalname,
-        download_filename: sanitizeFileName(downloadName)
-      });
+      return writeAndDownloadResponse(res, editedPdfBuffer, downloadName, cleanupPaths);
     } catch (error) {
       console.error('edit failed:', error);
       await cleanupFiles(cleanupPaths);

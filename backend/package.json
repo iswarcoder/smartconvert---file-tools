@@ -11,10 +11,11 @@
     "node": ">=18"
   },
   "dependencies": {
-    "ilovepdf-nodejs": "npm:@ilovepdf/ilovepdf-nodejs@^0.3.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
-    "multer": "^2.0.2"
+    "ilovepdf-nodejs": "npm:@ilovepdf/ilovepdf-nodejs@^0.3.1",
+    "multer": "^2.0.2",
+    "pdf-lib": "^1.17.1"
   }
 }
