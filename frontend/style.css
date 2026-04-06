@@ -516,6 +516,24 @@ body.app-ready #loadingOverlay {
   margin: 0;
 }
 
+.pdf-office-notice {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 107, 107, 0.08);
+  border: 1px solid rgba(255, 107, 107, 0.18);
+  color: #b42318;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.pdf-office-option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+  box-shadow: var(--shadow-sm);
+}
+
 .pdf-office-selected-format {
   min-height: 44px;
   display: flex;

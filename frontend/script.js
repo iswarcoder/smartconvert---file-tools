@@ -36,6 +36,7 @@ let compressDownloadBlobUrl = null;
 let imageConvertDownloadBlobUrl = null;
 let imagePdfDownloadBlobUrl = null;
 let loadingRequests = 0;
+let cloudConvertConfigured = false;
 
 // ============================================
 // FORMAT MAPPING FOR CONVERSIONS
@@ -71,6 +72,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   loadHistory();
   await fetchAvailableTools();
+  await fetchCloudConvertStatus();
+  applyCloudConvertAvailability();
   document.body.classList.add('app-ready');
 });
 
@@ -142,6 +145,36 @@ async function fetchAvailableTools() {
   console.log('Using fallback tools');
   platformState.availableTools = FALLBACK_TOOLS;
   renderToolsGrid();
+}
+
+async function fetchCloudConvertStatus() {
+  try {
+    const response = await fetch(`${API_URL}/api/health`);
+    const data = await response.json();
+    cloudConvertConfigured = Boolean(data?.cloudconvertConfigured);
+  } catch (error) {
+    cloudConvertConfigured = false;
+  }
+}
+
+function applyCloudConvertAvailability() {
+  const notice = document.getElementById('pdfOfficeCloudConvertNotice');
+  const buttons = document.querySelectorAll('.pdf-office-option');
+
+  buttons.forEach((button) => {
+    button.disabled = !cloudConvertConfigured;
+    button.setAttribute('aria-disabled', String(!cloudConvertConfigured));
+  });
+
+  if (notice) {
+    if (cloudConvertConfigured) {
+      notice.style.display = 'none';
+      notice.textContent = '';
+    } else {
+      notice.style.display = 'block';
+      notice.textContent = 'CloudConvert is not configured on the server yet. Add CLOUDCONVERT_TOKEN in Render to enable PDF to Word and PDF to PowerPoint.';
+    }
+  }
 }
 
 function renderToolsGrid() {
@@ -469,6 +502,11 @@ function selectFileType(type) {
 }
 
 function selectPdfOfficeFormat(format) {
+  if (!cloudConvertConfigured) {
+    showToast('❌ CloudConvert is not configured. Add CLOUDCONVERT_TOKEN in Render to enable PDF to Office conversion.', 'error');
+    return;
+  }
+
   selectedPdfOfficeFormat = format;
   platformState.selectedFiles.pdfOffice = null;
 
@@ -803,6 +841,11 @@ async function performConversion() {
 }
 
 async function performPdfOfficeConversion() {
+  if (!cloudConvertConfigured) {
+    showToast('❌ CloudConvert is not configured. Add CLOUDCONVERT_TOKEN in Render to enable this conversion.', 'error');
+    return;
+  }
+
   const file = platformState.selectedFiles.pdfOffice;
   const format = selectedPdfOfficeFormat;
 

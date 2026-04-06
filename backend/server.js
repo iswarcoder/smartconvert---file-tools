@@ -561,14 +561,16 @@ app.get('/', (req, res) => {
 app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
-    configured: Boolean(process.env.PUBLIC_KEY && process.env.SECRET_KEY)
+    configured: Boolean(process.env.PUBLIC_KEY && process.env.SECRET_KEY),
+    cloudconvertConfigured: Boolean(process.env.CLOUDCONVERT_TOKEN)
   });
 });
 
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    configured: Boolean(process.env.PUBLIC_KEY && process.env.SECRET_KEY)
+    configured: Boolean(process.env.PUBLIC_KEY && process.env.SECRET_KEY),
+    cloudconvertConfigured: Boolean(process.env.CLOUDCONVERT_TOKEN)
   });
 });
 
