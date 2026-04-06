@@ -900,8 +900,9 @@ async function performPdfOfficeConversion() {
       resetPdfOfficeForm(true);
     }, 500);
   } catch (error) {
-    showProgress('pdfOffice', 0, '❌ ' + error.message);
-    showToast('❌ Error: ' + error.message, 'error');
+    const message = String(error?.message || 'Unknown error');
+    showProgress('pdfOffice', 0, '❌ ' + message);
+    showToast('❌ Error: ' + message, 'error');
   } finally {
     document.getElementById('pdfOfficeBtn').disabled = false;
   }

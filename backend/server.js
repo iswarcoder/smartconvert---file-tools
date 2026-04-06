@@ -112,7 +112,13 @@ function cloudConvertErrorMessage(data, fallbackMessage) {
     ? data.errors.map((item) => item?.message).filter(Boolean)
     : [];
 
-  return data?.message || data?.error || detailMessages.join('; ') || fallbackMessage;
+  const rawMessage = data?.message || data?.error || detailMessages.join('; ') || fallbackMessage;
+
+  if (/invalid scope/i.test(rawMessage)) {
+    return 'CloudConvert API key scope is invalid. Create a CloudConvert API key with task.read and task.write scopes, then update CLOUDCONVERT_KEY in Render.';
+  }
+
+  return rawMessage;
 }
 
 async function uploadCloudConvertFile(uploadForm, file) {
