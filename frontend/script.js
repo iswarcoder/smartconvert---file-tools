@@ -190,6 +190,11 @@ function renderToolsGrid() {
   `).join('');
 }
 
+function openAiPdfFeature(feature) {
+  const featureLabel = feature === 'summarize' ? 'AI Summarize PDF' : 'Translate PDF';
+  showToast(`${featureLabel} is in preview. Connect an AI provider to enable it.`, 'info');
+}
+
 // ============================================
 // NAVIGATION
 // ============================================
