@@ -1250,6 +1250,15 @@ app.post('/api/translate', async (req, res) => {
   } catch (error) {
     console.error('translate failed:', error);
 
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    if (text) {
+      return res.json({
+        result: text,
+        fallback: true,
+        message: 'Translation service is temporarily unavailable. Returned original text.'
+      });
+    }
+
     return res.status(500).json({ error: 'Translation failed' });
   }
 });
