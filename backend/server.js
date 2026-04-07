@@ -16,6 +16,10 @@ const OUTPUT_DIR = path.join(__dirname, 'outputs');
 const API_ROOT = 'https://api.ilovepdf.com/v1';
 const CLOUDCONVERT_API_ROOT = 'https://api.cloudconvert.com/v2';
 const CLOUDCONVERT_SYNC_API_ROOT = 'https://sync.api.cloudconvert.com/v2';
+const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
+const GEMINI_MODEL = 'gemini-pro';
+const GEMINI_CHUNK_SIZE = 2000;
+const GEMINI_TIMEOUT_MS = 30000;
 const upload = multer({
   dest: TEMP_DIR,
   limits: {
@@ -441,6 +445,133 @@ async function executePdfToOfficeWorkflow(file, outputFormat) {
       job_id: jobId
     }
   };
+}
+
+function requireGeminiApiKey() {
+  const apiKey = String(process.env.GEMINI_API_KEY || '').trim();
+
+  if (!apiKey) {
+    throw new Error('Missing GEMINI_API_KEY. Add it in Render environment variables or backend/.env for local testing.');
+  }
+
+  return apiKey;
+}
+
+function splitTextIntoChunks(text, maxLength = GEMINI_CHUNK_SIZE) {
+  const normalizedText = String(text || '').trim();
+
+  if (!normalizedText) {
+    return [];
+  }
+
+  const chunks = [];
+  let cursor = 0;
+
+  while (cursor < normalizedText.length) {
+    let end = Math.min(cursor + maxLength, normalizedText.length);
+
+    if (end < normalizedText.length) {
+      const breakpoint = normalizedText.lastIndexOf(' ', end);
+      if (breakpoint > cursor + Math.floor(maxLength * 0.6)) {
+        end = breakpoint;
+      }
+    }
+
+    const chunk = normalizedText.slice(cursor, end).trim();
+    if (chunk) {
+      chunks.push(chunk);
+    }
+
+    cursor = end;
+  }
+
+  return chunks;
+}
+
+async function callGeminiGenerateContent(promptText) {
+  const apiKey = requireGeminiApiKey();
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${GEMINI_API_ROOT}/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: promptText
+              }
+            ]
+          }
+        ]
+      }),
+      signal: controller.signal
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const upstreamMessage = data?.error?.message || data?.message || 'Gemini API request failed';
+      throw new Error(upstreamMessage);
+    }
+
+    const parts = data?.candidates?.[0]?.content?.parts;
+    const outputText = Array.isArray(parts)
+      ? parts.map((part) => part?.text).filter(Boolean).join('\n').trim()
+      : '';
+
+    if (!outputText) {
+      throw new Error('Gemini API returned an empty summary');
+    }
+
+    return outputText;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Gemini API request timed out');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function summarizeTextWithGemini(text) {
+  const chunks = splitTextIntoChunks(text, GEMINI_CHUNK_SIZE);
+
+  if (chunks.length === 0) {
+    throw new Error('Text is required for summarization');
+  }
+
+  const chunkSummaries = [];
+
+  for (let index = 0; index < chunks.length; index += 1) {
+    const chunkPrompt = [
+      'Summarize the following PDF text in bullet points:',
+      '',
+      chunks[index]
+    ].join('\n');
+
+    chunkSummaries.push(await callGeminiGenerateContent(chunkPrompt));
+  }
+
+  if (chunkSummaries.length === 1) {
+    return chunkSummaries[0];
+  }
+
+  const mergePrompt = [
+    'Summarize the following PDF text in bullet points:',
+    '',
+    'Combine and deduplicate these chunk summaries into one coherent bullet list:',
+    '',
+    chunkSummaries.map((summary, index) => `Chunk ${index + 1}:\n${summary}`).join('\n\n')
+  ].join('\n');
+
+  return callGeminiGenerateContent(mergePrompt);
 }
 
 async function getAuthToken() {
@@ -912,6 +1043,33 @@ app.post('/api/edit', upload.fields([
 
 app.post('/pdf-to-office', upload.single('file'), handlePdfToOfficeRoute());
 app.post('/api/pdf-to-office', upload.single('file'), handlePdfToOfficeRoute());
+
+app.post('/api/summarize', async (req, res) => {
+  try {
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+
+    if (!text) {
+      return res.status(400).json({ error: 'Invalid input', message: 'Request body must include a non-empty text string.' });
+    }
+
+    const result = await summarizeTextWithGemini(text);
+    return res.json({ result });
+  } catch (error) {
+    console.error('summarize failed:', error);
+
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const statusCode = /Missing GEMINI_API_KEY|Text is required|Invalid input/i.test(message)
+      ? 400
+      : /timed out/i.test(message)
+        ? 504
+        : 500;
+
+    return res.status(statusCode).json({
+      error: 'summarize failed',
+      message
+    });
+  }
+});
 
 app.get('/api/download/:filename', async (req, res) => {
   try {
