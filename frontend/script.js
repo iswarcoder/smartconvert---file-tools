@@ -99,14 +99,6 @@ function resolveApiUrl() {
     return configuredApi.replace(/\/+$/, '');
   }
 
-  const origin = window.location.origin;
-  const isHttpOrigin = /^https?:\/\//i.test(origin);
-  const isLocalhost = /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
-
-  if (isHttpOrigin && !isLocalhost) {
-    return origin.replace(/\/+$/, '');
-  }
-
   return DEFAULT_API_URL;
 }
 
