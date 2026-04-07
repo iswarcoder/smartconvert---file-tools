@@ -17,7 +17,8 @@ const API_ROOT = 'https://api.ilovepdf.com/v1';
 const CLOUDCONVERT_API_ROOT = 'https://api.cloudconvert.com/v2';
 const CLOUDCONVERT_SYNC_API_ROOT = 'https://sync.api.cloudconvert.com/v2';
 const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_MODEL = 'gemini-pro';
+const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-pro').trim();
+const GEMINI_MODEL_FALLBACKS = ['gemini-1.5-flash', 'gemini-1.5-pro'];
 const GEMINI_CHUNK_SIZE = 2000;
 const GEMINI_TIMEOUT_MS = 30000;
 const upload = multer({
@@ -492,44 +493,65 @@ async function callGeminiGenerateContent(promptText) {
   const apiKey = requireGeminiApiKey();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+  const modelsToTry = [GEMINI_MODEL, ...GEMINI_MODEL_FALLBACKS].filter(Boolean);
+  const seenModels = new Set();
+  const uniqueModelsToTry = modelsToTry.filter((model) => {
+    if (seenModels.has(model)) {
+      return false;
+    }
+    seenModels.add(model);
+    return true;
+  });
+
+  let lastError = null;
 
   try {
-    const response = await fetch(`${GEMINI_API_ROOT}/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              {
-                text: promptText
-              }
-            ]
-          }
-        ]
-      }),
-      signal: controller.signal
-    });
+    for (const model of uniqueModelsToTry) {
+      const response = await fetch(`${GEMINI_API_ROOT}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: promptText
+                }
+              ]
+            }
+          ]
+        }),
+        signal: controller.signal
+      });
 
-    const data = await response.json().catch(() => ({}));
+      const data = await response.json().catch(() => ({}));
 
-    if (!response.ok) {
-      const upstreamMessage = data?.error?.message || data?.message || 'Gemini API request failed';
-      throw new Error(upstreamMessage);
+      if (!response.ok) {
+        const upstreamMessage = data?.error?.message || data?.message || 'Gemini API request failed';
+        const modelMissing = /is not found|not supported/i.test(upstreamMessage);
+
+        lastError = new Error(upstreamMessage);
+        if (modelMissing) {
+          continue;
+        }
+        throw lastError;
+      }
+
+      const parts = data?.candidates?.[0]?.content?.parts;
+      const outputText = Array.isArray(parts)
+        ? parts.map((part) => part?.text).filter(Boolean).join('\n').trim()
+        : '';
+
+      if (!outputText) {
+        throw new Error('Gemini API returned an empty summary');
+      }
+
+      return outputText;
     }
 
-    const parts = data?.candidates?.[0]?.content?.parts;
-    const outputText = Array.isArray(parts)
-      ? parts.map((part) => part?.text).filter(Boolean).join('\n').trim()
-      : '';
-
-    if (!outputText) {
-      throw new Error('Gemini API returned an empty summary');
-    }
-
-    return outputText;
+    throw lastError || new Error('No supported Gemini model is currently available for generateContent');
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('Gemini API request timed out');
