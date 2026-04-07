@@ -609,7 +609,7 @@ async function performAiTranslate() {
   const button = document.getElementById('aiTranslateBtn');
 
   const text = (input?.value || '').trim();
-  const targetLang = (langInput?.value || '').trim().toLowerCase();
+  const targetLang = ((langInput && typeof langInput.value === 'string' ? langInput.value : '') || 'en').trim().toLowerCase();
 
   if (!text) {
     showToast('❌ Please paste text to translate.', 'error');

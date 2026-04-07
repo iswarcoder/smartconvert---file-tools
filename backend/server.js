@@ -534,7 +534,7 @@ function isValidLanguageCode(code) {
 function getTargetLanguageName(targetLang) {
   const normalized = String(targetLang || '').trim().toLowerCase();
   if (!normalized) {
-    return '';
+    return 'English';
   }
 
   if (LANGUAGE_NAME_MAP[normalized]) {
@@ -551,9 +551,11 @@ function getTargetLanguageName(targetLang) {
 
 async function translateTextWithGemini(text, targetLang) {
   const targetLanguageName = getTargetLanguageName(targetLang);
+  console.log('targetLang:', targetLang);
+  console.log('language:', targetLanguageName);
+
   const prompt = [
-    `Translate the following text into ${targetLanguageName}:`,
-    'Return only the translated text without notes or extra explanation.',
+    `Translate the following text into ${targetLanguageName}. Only return translated text, no explanation.`,
     '',
     text
   ].join('\n');
@@ -1237,7 +1239,10 @@ app.post('/api/summarize', async (req, res) => {
 app.post('/api/translate', async (req, res) => {
   try {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-    const targetLang = typeof req.body?.targetLang === 'string' ? req.body.targetLang.trim().toLowerCase() : '';
+    const requestedTargetLang = typeof req.body?.targetLang === 'string' ? req.body.targetLang.trim().toLowerCase() : '';
+    const targetLang = requestedTargetLang && isValidLanguageCode(requestedTargetLang)
+      ? requestedTargetLang
+      : 'en';
 
     if (!text) {
       return res.status(400).json({
@@ -1246,26 +1251,13 @@ app.post('/api/translate', async (req, res) => {
       });
     }
 
-    if (!targetLang || !isValidLanguageCode(targetLang)) {
-      return res.status(400).json({
-        error: 'Invalid input',
-        message: 'Request body must include a valid targetLang (example: hi, fr, es, pt-br).'
-      });
-    }
+    console.log('targetLang:', targetLang);
+    console.log('language:', getTargetLanguageName(targetLang));
 
     const result = await translateTextWithGemini(text, targetLang);
     return res.json({ result });
   } catch (error) {
     console.error('translate failed:', error);
-
-    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-    if (text) {
-      return res.json({
-        result: text,
-        fallback: true,
-        message: 'Translation service is temporarily unavailable. Returned original text.'
-      });
-    }
 
     return res.status(500).json({ error: 'Translation failed' });
   }
