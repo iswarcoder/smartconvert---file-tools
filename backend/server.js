@@ -946,7 +946,9 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ok',
     configured: Boolean(process.env.PUBLIC_KEY && process.env.SECRET_KEY),
-    cloudconvertConfigured: Boolean(process.env.CLOUDCONVERT_KEY || process.env.CLOUDCONVERT_TOKEN)
+    cloudconvertConfigured: Boolean(process.env.CLOUDCONVERT_KEY || process.env.CLOUDCONVERT_TOKEN),
+    release: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || 'local',
+    geminiModel: GEMINI_MODEL || null
   });
 });
 
@@ -954,7 +956,9 @@ app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
     configured: Boolean(process.env.PUBLIC_KEY && process.env.SECRET_KEY),
-    cloudconvertConfigured: Boolean(process.env.CLOUDCONVERT_KEY || process.env.CLOUDCONVERT_TOKEN)
+    cloudconvertConfigured: Boolean(process.env.CLOUDCONVERT_KEY || process.env.CLOUDCONVERT_TOKEN),
+    release: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || 'local',
+    geminiModel: GEMINI_MODEL || null
   });
 });
 
