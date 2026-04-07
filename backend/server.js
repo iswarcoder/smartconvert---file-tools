@@ -22,6 +22,9 @@ const GEMINI_MODEL_FALLBACKS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'ge
 const GEMINI_CHUNK_SIZE = 2000;
 const GEMINI_TIMEOUT_MS = 30000;
 const SUMMARY_WORD_LIMIT = 2000;
+const LIBRE_TRANSLATE_API_URL = 'https://libretranslate.de/translate';
+const TRANSLATE_CHUNK_SIZE = 1500;
+const TRANSLATE_TIMEOUT_MS = 30000;
 const upload = multer({
   dest: TEMP_DIR,
   limits: {
@@ -501,6 +504,69 @@ function limitWords(text, limit = SUMMARY_WORD_LIMIT) {
   }
 
   return `${words.slice(0, limit).join(' ')}...`;
+}
+
+function isValidLanguageCode(code) {
+  const normalized = String(code || '').trim();
+  return /^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(normalized);
+}
+
+async function callLibreTranslateChunk(text, targetLang) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(LIBRE_TRANSLATE_API_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        q: text,
+        source: 'en',
+        target: targetLang,
+        format: 'text'
+      }),
+      signal: controller.signal
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const upstreamMessage = data?.error || data?.message || 'LibreTranslate request failed';
+      throw new Error(upstreamMessage);
+    }
+
+    const translatedText = String(data?.translatedText || '').trim();
+    if (!translatedText) {
+      throw new Error('LibreTranslate returned an empty translation');
+    }
+
+    return translatedText;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('LibreTranslate request timed out');
+    }
+
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function translateTextWithChunking(text, targetLang) {
+  const chunks = splitTextIntoChunks(text, TRANSLATE_CHUNK_SIZE);
+
+  if (chunks.length === 0) {
+    throw new Error('Text is required for translation');
+  }
+
+  const translatedChunks = [];
+  for (const chunk of chunks) {
+    translatedChunks.push(await callLibreTranslateChunk(chunk, targetLang));
+  }
+
+  return translatedChunks.join('\n\n').trim();
 }
 
 function normalizeGeminiModelName(modelName) {
@@ -1171,6 +1237,44 @@ app.post('/api/summarize', async (req, res) => {
 
     return res.status(statusCode).json({
       error: 'summarize failed',
+      message
+    });
+  }
+});
+
+app.post('/api/translate', async (req, res) => {
+  try {
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    const targetLang = typeof req.body?.targetLang === 'string' ? req.body.targetLang.trim().toLowerCase() : '';
+
+    if (!text) {
+      return res.status(400).json({
+        error: 'Invalid input',
+        message: 'Request body must include a non-empty text string.'
+      });
+    }
+
+    if (!targetLang || !isValidLanguageCode(targetLang)) {
+      return res.status(400).json({
+        error: 'Invalid input',
+        message: 'Request body must include a valid targetLang (example: hi, fr, es, pt-br).'
+      });
+    }
+
+    const result = await translateTextWithChunking(text, targetLang);
+    return res.json({ result });
+  } catch (error) {
+    console.error('translate failed:', error);
+
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    const statusCode = /Text is required|Invalid input/i.test(message)
+      ? 400
+      : /timed out/i.test(message)
+        ? 504
+        : 502;
+
+    return res.status(statusCode).json({
+      error: 'translate failed',
       message
     });
   }
