@@ -621,6 +621,28 @@ async function summarizeTextWithGemini(text) {
   return callGeminiGenerateContent(mergePrompt);
 }
 
+function summarizeTextFallback(text, maxBullets = 6) {
+  const cleaned = String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!cleaned) {
+    return '- No content available to summarize.';
+  }
+
+  const sentences = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .map((sentence) => sentence.trim())
+    .filter(Boolean)
+    .filter((sentence) => sentence.length > 20);
+
+  const selected = (sentences.length > 0 ? sentences : [cleaned]).slice(0, maxBullets);
+  const bullets = selected.map((sentence) => `- ${sentence}`);
+
+  bullets.unshift('- Fallback summary generated because Gemini quota is currently exceeded.');
+  return bullets.join('\n');
+}
+
 async function getAuthToken() {
   requireApiKeys();
 
@@ -1109,6 +1131,16 @@ app.post('/api/summarize', async (req, res) => {
     console.error('summarize failed:', error);
 
     const message = error instanceof Error ? error.message : 'Unknown error';
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    if (/quota exceeded|rate limit|billing/i.test(message) && text) {
+      const fallbackResult = summarizeTextFallback(text);
+      return res.json({
+        result: fallbackResult,
+        fallback: true,
+        message: 'Gemini quota exceeded. Returned fallback summary.'
+      });
+    }
+
     const statusCode = /Missing GEMINI_API_KEY|Text is required|Invalid input/i.test(message)
       ? 400
       : /timed out/i.test(message)
