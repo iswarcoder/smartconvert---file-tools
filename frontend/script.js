@@ -7,7 +7,9 @@
 // GLOBAL STATE
 // ============================================
 
-const API_URL = 'https://smartconvert-file-tools-1.onrender.com';
+const DEFAULT_API_URL = 'https://smartconvert-file-tools-1.onrender.com';
+const INIT_FETCH_TIMEOUT_MS = 3500;
+const API_URL = resolveApiUrl();
 
 const platformState = {
   currentTool: 'dashboard',
@@ -71,11 +73,55 @@ const formatLabels = {
 document.addEventListener('DOMContentLoaded', async () => {
   setupEventListeners();
   loadHistory();
-  await fetchAvailableTools();
-  await fetchCloudConvertStatus();
+
+  // Render immediately so users can interact without waiting on network checks.
+  platformState.availableTools = FALLBACK_TOOLS;
+  renderToolsGrid();
   applyCloudConvertAvailability();
-  document.body.classList.add('app-ready');
+
+  requestAnimationFrame(() => {
+    document.body.classList.add('app-ready');
+  });
+
+  Promise.allSettled([fetchAvailableTools(), fetchCloudConvertStatus()])
+    .finally(() => {
+      applyCloudConvertAvailability();
+    });
 });
+
+function resolveApiUrl() {
+  const configuredApi = typeof window.__SMARTCONVERT_API_URL === 'string'
+    ? window.__SMARTCONVERT_API_URL.trim()
+    : '';
+
+  if (configuredApi) {
+    return configuredApi.replace(/\/+$/, '');
+  }
+
+  const origin = window.location.origin;
+  const isHttpOrigin = /^https?:\/\//i.test(origin);
+  const isLocalhost = /^(localhost|127\.0\.0\.1)$/i.test(window.location.hostname);
+
+  if (isHttpOrigin && !isLocalhost) {
+    return origin.replace(/\/+$/, '');
+  }
+
+  return DEFAULT_API_URL;
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 // ============================================
 // GET AVAILABLE TOOLS
@@ -129,7 +175,7 @@ const FALLBACK_TOOLS = [
 
 async function fetchAvailableTools() {
   try {
-    const response = await fetch(`${API_URL}/api/tools`);
+    const response = await fetchWithTimeout(`${API_URL}/api/tools`, {}, INIT_FETCH_TIMEOUT_MS);
     const data = await response.json();
     
     if (data.status === 'success' && data.tools && data.tools.length > 0) {
@@ -149,7 +195,7 @@ async function fetchAvailableTools() {
 
 async function fetchCloudConvertStatus() {
   try {
-    const response = await fetch(`${API_URL}/api/health`);
+    const response = await fetchWithTimeout(`${API_URL}/api/health`, {}, INIT_FETCH_TIMEOUT_MS);
     const data = await response.json();
     cloudConvertConfigured = Boolean(data?.cloudconvertConfigured);
   } catch (error) {

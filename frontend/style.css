@@ -79,7 +79,7 @@ body.app-ready #loadingOverlay {
   top: 0;
   z-index: 100;
   background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(20px);
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(102, 126, 234, 0.1);
   box-shadow: 0 0 30px rgba(0, 0, 0, 0.05);
 }
@@ -1268,12 +1268,12 @@ body.app-ready #loadingOverlay {
   align-items: center;
   justify-content: center;
   background: rgba(15, 23, 42, 0.45);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(4px);
 }
 
 body:not(.app-ready) .loading-overlay {
   background: linear-gradient(135deg, rgba(248, 249, 255, 0.94) 0%, rgba(240, 242, 255, 0.94) 100%);
-  backdrop-filter: blur(16px);
+  backdrop-filter: none;
 }
 
 .loading-card {
@@ -1334,6 +1334,17 @@ body:not(.app-ready) .loading-overlay {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
