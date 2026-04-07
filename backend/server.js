@@ -528,12 +528,17 @@ async function parseJsonBodySafe(response) {
 }
 
 async function callLibreTranslateEndpoint(endpoint, text, targetLang, signal) {
+  const apiKey = String(process.env.LIBRE_TRANSLATE_API_KEY || '').trim();
   const payload = {
     q: text,
     source: 'en',
     target: targetLang,
     format: 'text'
   };
+
+  if (apiKey) {
+    payload.api_key = apiKey;
+  }
 
   const response = await fetch(endpoint, {
     method: 'POST',

@@ -19,3 +19,5 @@ services:
         sync: false
       - key: GEMINI_MODEL
         value: gemini-1.5-flash
+      - key: LIBRE_TRANSLATE_API_KEY
+        sync: false
