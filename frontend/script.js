@@ -9,6 +9,7 @@
 
 const DEFAULT_API_URL = 'https://smartconvert-file-tools-1.onrender.com';
 const INIT_FETCH_TIMEOUT_MS = 3500;
+const AI_SUMMARY_WORD_LIMIT = 2000;
 const API_URL = resolveApiUrl();
 
 const platformState = {
@@ -471,9 +472,15 @@ async function performAiSummarize() {
   const resultNode = document.getElementById('aiSummarizeResult');
   const button = document.getElementById('aiSummarizeBtn');
   const text = (input?.value || '').trim();
+  const wordCount = text ? text.split(/\s+/).filter(Boolean).length : 0;
 
   if (!text) {
     showToast('❌ Please paste PDF text first', 'error');
+    return;
+  }
+
+  if (wordCount > AI_SUMMARY_WORD_LIMIT) {
+    showToast(`❌ Please keep text within ${AI_SUMMARY_WORD_LIMIT} words.`, 'error');
     return;
   }
 

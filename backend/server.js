@@ -21,6 +21,7 @@ const GEMINI_MODEL = String(process.env.GEMINI_MODEL || '').trim();
 const GEMINI_MODEL_FALLBACKS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
 const GEMINI_CHUNK_SIZE = 2000;
 const GEMINI_TIMEOUT_MS = 30000;
+const SUMMARY_WORD_LIMIT = 2000;
 const upload = multer({
   dest: TEMP_DIR,
   limits: {
@@ -489,6 +490,19 @@ function splitTextIntoChunks(text, maxLength = GEMINI_CHUNK_SIZE) {
   return chunks;
 }
 
+function countWords(text) {
+  return String(text || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function limitWords(text, limit = SUMMARY_WORD_LIMIT) {
+  const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+  if (words.length <= limit) {
+    return String(text || '').trim();
+  }
+
+  return `${words.slice(0, limit).join(' ')}...`;
+}
+
 function normalizeGeminiModelName(modelName) {
   return String(modelName || '').trim().replace(/^models\//, '');
 }
@@ -598,7 +612,8 @@ async function summarizeTextWithGemini(text) {
 
   for (let index = 0; index < chunks.length; index += 1) {
     const chunkPrompt = [
-      'Summarize the following PDF text in bullet points:',
+      `Summarize the following PDF text in bullet points. Keep the full response under ${SUMMARY_WORD_LIMIT} words.`,
+      'Prioritize key ideas, names, and conclusions. Avoid repetition.',
       '',
       chunks[index]
     ].join('\n');
@@ -611,14 +626,14 @@ async function summarizeTextWithGemini(text) {
   }
 
   const mergePrompt = [
-    'Summarize the following PDF text in bullet points:',
+    `Summarize the following PDF text in bullet points. Keep the full response under ${SUMMARY_WORD_LIMIT} words.`,
     '',
     'Combine and deduplicate these chunk summaries into one coherent bullet list:',
     '',
     chunkSummaries.map((summary, index) => `Chunk ${index + 1}:\n${summary}`).join('\n\n')
   ].join('\n');
 
-  return callGeminiGenerateContent(mergePrompt);
+  return limitWords(await callGeminiGenerateContent(mergePrompt), SUMMARY_WORD_LIMIT);
 }
 
 function summarizeTextFallback(text, maxBullets = 6) {
@@ -640,7 +655,7 @@ function summarizeTextFallback(text, maxBullets = 6) {
   const bullets = selected.map((sentence) => `- ${sentence}`);
 
   bullets.unshift('- Fallback summary generated because Gemini quota is currently exceeded.');
-  return bullets.join('\n');
+  return limitWords(bullets.join('\n'), SUMMARY_WORD_LIMIT);
 }
 
 async function getAuthToken() {
@@ -1125,7 +1140,14 @@ app.post('/api/summarize', async (req, res) => {
       return res.status(400).json({ error: 'Invalid input', message: 'Request body must include a non-empty text string.' });
     }
 
-    const result = await summarizeTextWithGemini(text);
+    if (countWords(text) > SUMMARY_WORD_LIMIT) {
+      return res.status(400).json({
+        error: 'Invalid input',
+        message: `Input text must be ${SUMMARY_WORD_LIMIT} words or fewer.`
+      });
+    }
+
+    const result = limitWords(await summarizeTextWithGemini(text), SUMMARY_WORD_LIMIT);
     return res.json({ result });
   } catch (error) {
     console.error('summarize failed:', error);
