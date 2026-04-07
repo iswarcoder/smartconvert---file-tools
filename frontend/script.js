@@ -177,7 +177,7 @@ const FALLBACK_TOOLS = [
 async function fetchAvailableTools() {
   try {
     const response = await fetchWithTimeout(`${API_URL}/api/tools`, {}, INIT_FETCH_TIMEOUT_MS);
-    const data = await response.json();
+    const data = await parseJsonResponse(response);
     
     if (data.status === 'success' && data.tools && data.tools.length > 0) {
       platformState.availableTools = data.tools;
@@ -197,7 +197,7 @@ async function fetchAvailableTools() {
 async function fetchCloudConvertStatus() {
   try {
     const response = await fetchWithTimeout(`${API_URL}/api/health`, {}, INIT_FETCH_TIMEOUT_MS);
-    const data = await response.json();
+    const data = await parseJsonResponse(response);
     cloudConvertConfigured = Boolean(data?.cloudconvertConfigured);
   } catch (error) {
     cloudConvertConfigured = false;
@@ -505,11 +505,11 @@ async function performAiSummarize() {
       throw new Error(await readErrorMessage(response));
     }
 
-    const data = await response.json();
+    const data = await parseJsonResponse(response);
     const summary = String(data?.result || '').trim();
 
     if (!summary) {
-      throw new Error('Empty summary received from server');
+      throw new Error('Server returned an empty summary. Check GEMINI_API_KEY and backend logs.');
     }
 
     showProgress('aiSummarize', 100, 'Summary ready');
@@ -894,12 +894,26 @@ async function readErrorMessage(response) {
   const contentType = response.headers.get('content-type') || '';
 
   if (contentType.includes('application/json')) {
-    const data = await response.json().catch(() => ({}));
+    const data = await parseJsonResponse(response);
     return data.message || data.error || 'Request failed';
   }
 
   const text = await response.text().catch(() => '');
   return text || 'Request failed';
+}
+
+async function parseJsonResponse(response) {
+  const raw = await response.text().catch(() => '');
+
+  if (!raw || !raw.trim()) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    return {};
+  }
 }
 
 async function submitFileRequest(endpoint, formData, options = {}) {
@@ -918,7 +932,7 @@ async function submitFileRequest(endpoint, formData, options = {}) {
     }
 
     if (contentType.includes('application/json')) {
-      return await response.json();
+      return await parseJsonResponse(response);
     }
 
     const blob = await response.blob();
