@@ -17,8 +17,8 @@ const API_ROOT = 'https://api.ilovepdf.com/v1';
 const CLOUDCONVERT_API_ROOT = 'https://api.cloudconvert.com/v2';
 const CLOUDCONVERT_SYNC_API_ROOT = 'https://sync.api.cloudconvert.com/v2';
 const GEMINI_API_ROOT = 'https://generativelanguage.googleapis.com/v1beta';
-const GEMINI_MODEL = String(process.env.GEMINI_MODEL || 'gemini-pro').trim();
-const GEMINI_MODEL_FALLBACKS = ['gemini-1.5-flash', 'gemini-1.5-pro'];
+const GEMINI_MODEL = String(process.env.GEMINI_MODEL || '').trim();
+const GEMINI_MODEL_FALLBACKS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-1.5-flash-latest', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
 const GEMINI_CHUNK_SIZE = 2000;
 const GEMINI_TIMEOUT_MS = 30000;
 const upload = multer({
@@ -489,11 +489,36 @@ function splitTextIntoChunks(text, maxLength = GEMINI_CHUNK_SIZE) {
   return chunks;
 }
 
+function normalizeGeminiModelName(modelName) {
+  return String(modelName || '').trim().replace(/^models\//, '');
+}
+
+async function listGeminiGenerateModels(apiKey, signal) {
+  const response = await fetch(`${GEMINI_API_ROOT}/models?key=${encodeURIComponent(apiKey)}`, {
+    method: 'GET',
+    signal
+  });
+
+  if (!response.ok) {
+    return [];
+  }
+
+  const data = await response.json().catch(() => ({}));
+  const models = Array.isArray(data?.models) ? data.models : [];
+
+  return models
+    .filter((model) => Array.isArray(model?.supportedGenerationMethods) && model.supportedGenerationMethods.includes('generateContent'))
+    .map((model) => normalizeGeminiModelName(model?.name))
+    .filter(Boolean);
+}
+
 async function callGeminiGenerateContent(promptText) {
   const apiKey = requireGeminiApiKey();
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
-  const modelsToTry = [GEMINI_MODEL, ...GEMINI_MODEL_FALLBACKS].filter(Boolean);
+
+  const discoveredModels = await listGeminiGenerateModels(apiKey, controller.signal).catch(() => []);
+  const modelsToTry = [normalizeGeminiModelName(GEMINI_MODEL), ...GEMINI_MODEL_FALLBACKS.map(normalizeGeminiModelName), ...discoveredModels].filter(Boolean);
   const seenModels = new Set();
   const uniqueModelsToTry = modelsToTry.filter((model) => {
     if (seenModels.has(model)) {
