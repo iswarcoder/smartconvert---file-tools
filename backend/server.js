@@ -23,7 +23,7 @@ const GEMINI_CHUNK_SIZE = 2000;
 const GEMINI_TIMEOUT_MS = 30000;
 const SUMMARY_WORD_LIMIT = 2000;
 const GEMINI_TRANSLATE_MODEL = 'gemini-1.5-flash';
-const GEMINI_TRANSLATE_ENDPOINT = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_TRANSLATE_MODEL}:generateContent`;
+const GEMINI_TRANSLATE_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TRANSLATE_MODEL}:generateContent`;
 const LANGUAGE_NAME_MAP = {
   hi: 'Hindi',
   bn: 'Bengali',
@@ -628,7 +628,12 @@ async function translateTextWithGemini(text, targetLang) {
     const data = await parseJsonSafely(response);
 
     if (!response.ok) {
-      throw new Error(getGeminiErrorMessage(data, 'Gemini translation request failed'));
+      const upstreamMessage = getGeminiErrorMessage(data, 'Gemini translation request failed');
+      if (/not found|not supported/i.test(upstreamMessage)) {
+        console.warn('[translate] fixed model endpoint unavailable, falling back to discovered Gemini model');
+        return callGeminiGenerateContent(prompt);
+      }
+      throw new Error(upstreamMessage);
     }
 
     const translatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
