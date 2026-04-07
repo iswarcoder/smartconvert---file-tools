@@ -24,6 +24,15 @@ const GEMINI_TIMEOUT_MS = 30000;
 const SUMMARY_WORD_LIMIT = 2000;
 const LANGUAGE_NAME_MAP = {
   hi: 'Hindi',
+  bn: 'Bengali',
+  ta: 'Tamil',
+  te: 'Telugu',
+  mr: 'Marathi',
+  gu: 'Gujarati',
+  kn: 'Kannada',
+  ml: 'Malayalam',
+  or: 'Odia',
+  pa: 'Punjabi',
   fr: 'French',
   es: 'Spanish',
   de: 'German',
@@ -33,7 +42,6 @@ const LANGUAGE_NAME_MAP = {
   ja: 'Japanese',
   ko: 'Korean',
   ar: 'Arabic',
-  bn: 'Bengali',
   zh: 'Chinese',
   en: 'English'
 };
@@ -538,7 +546,7 @@ function getTargetLanguageName(targetLang) {
     return LANGUAGE_NAME_MAP[baseCode];
   }
 
-  return normalized;
+  return 'English';
 }
 
 async function translateTextWithGemini(text, targetLang) {

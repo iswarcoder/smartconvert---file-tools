@@ -653,8 +653,20 @@
 
         <div class="form-group">
           <label class="form-label" for="aiTranslateTargetLang">Target language code</label>
-          <input id="aiTranslateTargetLang" class="form-input" value="hi" placeholder="Example: hi, fr, es, de">
-          <p class="form-hint">Example: hi (Hindi), fr (French), es (Spanish), de (German)</p>
+          <select id="aiTranslateTargetLang" class="form-input">
+            <option value="hi">Hindi (hi)</option>
+            <option value="bn">Bengali (bn)</option>
+            <option value="ta">Tamil (ta)</option>
+            <option value="te">Telugu (te)</option>
+            <option value="mr">Marathi (mr)</option>
+            <option value="gu">Gujarati (gu)</option>
+            <option value="kn">Kannada (kn)</option>
+            <option value="ml">Malayalam (ml)</option>
+            <option value="or">Odia (or)</option>
+            <option value="pa">Punjabi (pa)</option>
+            <option value="en">English (en)</option>
+          </select>
+          <p class="form-hint">Select a language from the list. If unknown, translation defaults to English.</p>
         </div>
 
         <div class="ai-actions-row">
