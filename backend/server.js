@@ -554,47 +554,52 @@ async function callLibreTranslateChunk(text, targetLang) {
 
   try {
     for (const endpoint of endpoints) {
-      const payload = {
-        q: text,
-        source: 'en',
-        target: targetLang,
-        format: 'text'
-      };
+      try {
+        const payload = {
+          q: text,
+          source: 'en',
+          target: targetLang,
+          format: 'text'
+        };
 
-      if (apiKey) {
-        payload.api_key = apiKey;
-      }
+        if (apiKey) {
+          payload.api_key = apiKey;
+        }
 
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Accept: 'application/json'
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json'
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
 
-      const { data, raw, contentType } = await parseJsonBodySafe(response);
+        const { data, raw, contentType } = await parseJsonBodySafe(response);
 
-      if (!response.ok) {
-        const upstreamMessage = data?.error || data?.message || raw || `LibreTranslate request failed (${response.status})`;
-        lastError = new Error(upstreamMessage);
+        if (!response.ok) {
+          const upstreamMessage = data?.error || data?.message || raw || `LibreTranslate request failed (${response.status})`;
+          lastError = new Error(upstreamMessage);
+          continue;
+        }
+
+        if (!data || /text\/html|<!doctype html|<html/i.test(`${contentType}\n${raw}`)) {
+          lastError = new Error(`LibreTranslate endpoint returned non-JSON response: ${endpoint}`);
+          continue;
+        }
+
+        const translatedText = String(data?.translatedText || data?.translation || '').trim();
+        if (!translatedText) {
+          lastError = new Error(`LibreTranslate returned an empty translation from ${endpoint}`);
+          continue;
+        }
+
+        return translatedText;
+      } catch (endpointError) {
+        lastError = endpointError instanceof Error ? endpointError : new Error('Unknown translation endpoint error');
         continue;
       }
-
-      if (!data || /text\/html|<!doctype html|<html/i.test(`${contentType}\n${raw}`)) {
-        lastError = new Error(`LibreTranslate endpoint returned non-JSON response: ${endpoint}`);
-        continue;
-      }
-
-      const translatedText = String(data?.translatedText || data?.translation || '').trim();
-      if (!translatedText) {
-        lastError = new Error(`LibreTranslate returned an empty translation from ${endpoint}`);
-        continue;
-      }
-
-      return translatedText;
     }
 
     throw lastError || new Error('All LibreTranslate endpoints failed');
@@ -1322,6 +1327,15 @@ app.post('/api/translate', async (req, res) => {
     console.error('translate failed:', error);
 
     const message = error instanceof Error ? error.message : 'Unknown error';
+    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+    if (/empty translation|non-JSON response|All LibreTranslate endpoints failed|ENOTFOUND|fetch failed|LibreTranslate request failed/i.test(message) && text) {
+      return res.json({
+        result: text,
+        fallback: true,
+        message: 'Translation provider is temporarily unavailable. Returned original text.'
+      });
+    }
+
     const statusCode = /Text is required|Invalid input/i.test(message)
       ? 400
       : /timed out/i.test(message)
