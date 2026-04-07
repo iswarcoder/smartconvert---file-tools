@@ -415,6 +415,40 @@ body.app-ready #loadingOverlay {
   transform: translateZ(0);
 }
 
+.ai-textarea {
+  min-height: 220px;
+  resize: vertical;
+}
+
+.ai-actions-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.ai-result-wrap {
+  margin-top: 14px;
+  padding: 20px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(102, 126, 234, 0.2);
+  background: rgba(102, 126, 234, 0.04);
+}
+
+.ai-result-wrap h3 {
+  margin-bottom: 10px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 20px;
+}
+
+.ai-result {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Inter', sans-serif;
+  line-height: 1.55;
+  color: var(--text-primary);
+}
+
 #editPdfView .tool-content {
   max-width: 920px;
 }

@@ -604,6 +604,41 @@
       </div>
     </section>
 
+    <!-- AI Summarize View -->
+    <section id="aiSummarizeView" class="tool-view" style="display: none;">
+      <div class="tool-header">
+        <button class="back-btn" onclick="showDashboard()">← Back to Dashboard</button>
+        <h2>AI Summarize PDF Text</h2>
+      </div>
+      <div class="tool-content">
+        <div class="form-group">
+          <label class="form-label" for="aiSummarizeInput">Paste PDF text</label>
+          <textarea id="aiSummarizeInput" class="form-input ai-textarea" placeholder="Paste extracted PDF text here..."></textarea>
+          <p class="form-hint">Tip: long text is chunked automatically before sending to Gemini.</p>
+        </div>
+
+        <div class="ai-actions-row">
+          <button class="btn btn-action" id="aiSummarizeBtn" type="button">Generate Summary</button>
+          <button class="btn btn-secondary" id="aiSummarizeClearBtn" type="button">Clear</button>
+        </div>
+
+        <div class="progress-section" id="aiSummarizeProgress" style="display: none;">
+          <div class="progress-bar-container">
+            <div class="progress-bar">
+              <div class="progress-fill" id="aiSummarizeProgressFill"></div>
+            </div>
+            <span class="progress-text" id="aiSummarizeProgressText">0%</span>
+          </div>
+          <p class="progress-status" id="aiSummarizeProgressStatus">Summarizing...</p>
+        </div>
+
+        <div class="ai-result-wrap" id="aiSummarizeResultWrap" style="display: none;">
+          <h3>Summary</h3>
+          <pre id="aiSummarizeResult" class="ai-result"></pre>
+        </div>
+      </div>
+    </section>
+
     <!-- History View -->
     <section id="historyView" class="view-section" style="display: none;">
       <div class="section-header">

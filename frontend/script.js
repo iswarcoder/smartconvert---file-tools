@@ -39,6 +39,7 @@ let imageConvertDownloadBlobUrl = null;
 let imagePdfDownloadBlobUrl = null;
 let loadingRequests = 0;
 let cloudConvertConfigured = false;
+let aiSummarizeRunning = false;
 
 // ============================================
 // FORMAT MAPPING FOR CONVERSIONS
@@ -237,8 +238,12 @@ function renderToolsGrid() {
 }
 
 function openAiPdfFeature(feature) {
-  const featureLabel = feature === 'summarize' ? 'AI Summarize PDF' : 'Translate PDF';
-  showToast(`${featureLabel} is in preview. Connect an AI provider to enable it.`, 'info');
+  if (feature === 'summarize') {
+    showAiSummarizeView();
+    return;
+  }
+
+  showToast('Translate PDF is in preview. It will be enabled in the next update.', 'info');
 }
 
 // ============================================
@@ -248,6 +253,7 @@ function openAiPdfFeature(feature) {
 function showDashboard() {
   platformState.currentTool = 'dashboard';
   document.getElementById('dashboardView').style.display = 'block';
+  document.getElementById('aiSummarizeView').style.display = 'none';
   document.getElementById('convertView').style.display = 'none';
   document.getElementById('mergePdfView').style.display = 'none';
   document.getElementById('splitPdfView').style.display = 'none';
@@ -261,6 +267,7 @@ function showDashboard() {
 function showHistory() {
   platformState.currentTool = 'history';
   document.getElementById('dashboardView').style.display = 'none';
+  document.getElementById('aiSummarizeView').style.display = 'none';
   document.getElementById('convertView').style.display = 'none';
   document.getElementById('mergePdfView').style.display = 'none';
   document.getElementById('splitPdfView').style.display = 'none';
@@ -301,6 +308,14 @@ function openTool(toolId) {
   }
   
   platformState.currentTool = toolId;
+  window.scrollTo(0, 0);
+}
+
+function showAiSummarizeView() {
+  showDashboard();
+  document.getElementById('dashboardView').style.display = 'none';
+  document.getElementById('aiSummarizeView').style.display = 'block';
+  platformState.currentTool = 'ai-summarize';
   window.scrollTo(0, 0);
 }
 
@@ -428,6 +443,100 @@ function setupEventListeners() {
   
   // History
   document.getElementById('clearHistoryBtn')?.addEventListener('click', () => clearHistory());
+
+  // AI summarize
+  document.getElementById('aiSummarizeBtn')?.addEventListener('click', () => performAiSummarize());
+  document.getElementById('aiSummarizeClearBtn')?.addEventListener('click', () => resetAiSummarize());
+}
+
+function resetAiSummarize() {
+  const input = document.getElementById('aiSummarizeInput');
+  const resultWrap = document.getElementById('aiSummarizeResultWrap');
+  const result = document.getElementById('aiSummarizeResult');
+
+  if (input) {
+    input.value = '';
+  }
+
+  if (result) {
+    result.textContent = '';
+  }
+
+  if (resultWrap) {
+    resultWrap.style.display = 'none';
+  }
+
+  hideProgress('aiSummarize');
+}
+
+async function performAiSummarize() {
+  if (aiSummarizeRunning) {
+    return;
+  }
+
+  const input = document.getElementById('aiSummarizeInput');
+  const resultWrap = document.getElementById('aiSummarizeResultWrap');
+  const resultNode = document.getElementById('aiSummarizeResult');
+  const button = document.getElementById('aiSummarizeBtn');
+  const text = (input?.value || '').trim();
+
+  if (!text) {
+    showToast('❌ Please paste PDF text first', 'error');
+    return;
+  }
+
+  aiSummarizeRunning = true;
+  if (button) {
+    button.disabled = true;
+  }
+
+  showProgress('aiSummarize', 35, 'Sending text to Gemini...');
+
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/summarize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ text })
+    }, 60000);
+
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+
+    const data = await response.json();
+    const summary = String(data?.result || '').trim();
+
+    if (!summary) {
+      throw new Error('Empty summary received from server');
+    }
+
+    showProgress('aiSummarize', 100, 'Summary ready');
+
+    if (resultNode) {
+      resultNode.textContent = summary;
+    }
+    if (resultWrap) {
+      resultWrap.style.display = 'block';
+    }
+
+    addConversionToHistory('pasted-text', 'AI Summarize', 'summary.txt', '', '', `Input length: ${text.length} chars`);
+    showToast('✅ Summary generated successfully', 'success');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to summarize';
+    showProgress('aiSummarize', 0, '❌ Summarization failed');
+    showToast(`❌ ${message}`, 'error');
+  } finally {
+    aiSummarizeRunning = false;
+    if (button) {
+      button.disabled = false;
+    }
+
+    setTimeout(() => {
+      hideProgress('aiSummarize');
+    }, 600);
+  }
 }
 
 // ============================================
