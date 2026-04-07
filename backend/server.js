@@ -22,6 +22,8 @@ const GEMINI_MODEL_FALLBACKS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'ge
 const GEMINI_CHUNK_SIZE = 2000;
 const GEMINI_TIMEOUT_MS = 30000;
 const SUMMARY_WORD_LIMIT = 2000;
+const GEMINI_TRANSLATE_MODEL = 'gemini-1.5-flash';
+const GEMINI_TRANSLATE_ENDPOINT = `https://generativelanguage.googleapis.com/v1/models/${GEMINI_TRANSLATE_MODEL}:generateContent`;
 const LANGUAGE_NAME_MAP = {
   hi: 'Hindi',
   bn: 'Bengali',
@@ -534,7 +536,7 @@ function isValidLanguageCode(code) {
 function getTargetLanguageName(targetLang) {
   const normalized = String(targetLang || '').trim().toLowerCase();
   if (!normalized) {
-    return 'English';
+    return '';
   }
 
   if (LANGUAGE_NAME_MAP[normalized]) {
@@ -546,21 +548,103 @@ function getTargetLanguageName(targetLang) {
     return LANGUAGE_NAME_MAP[baseCode];
   }
 
-  return 'English';
+  return '';
+}
+
+async function parseJsonSafely(response) {
+  const rawText = await response.text().catch(() => '');
+
+  if (!rawText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(rawText);
+  } catch (error) {
+    return {
+      parseError: true,
+      rawText
+    };
+  }
+}
+
+function getGeminiErrorMessage(data, fallbackMessage) {
+  if (data?.error?.message) {
+    return data.error.message;
+  }
+
+  if (typeof data?.message === 'string' && data.message.trim()) {
+    return data.message.trim();
+  }
+
+  if (data?.parseError && typeof data?.rawText === 'string' && data.rawText.trim()) {
+    return `Gemini API returned non-JSON response: ${data.rawText.slice(0, 200)}`;
+  }
+
+  return fallbackMessage;
 }
 
 async function translateTextWithGemini(text, targetLang) {
   const targetLanguageName = getTargetLanguageName(targetLang);
-  console.log('targetLang:', targetLang);
-  console.log('language:', targetLanguageName);
+  const apiKey = requireGeminiApiKey();
+
+  if (!targetLanguageName) {
+    throw new Error('Unsupported targetLang. Use a valid language code from the supported language map.');
+  }
+
+  console.log('[translate] targetLang:', targetLang);
+  console.log('[translate] language:', targetLanguageName);
+  console.log('[translate] inputLength:', text.length);
 
   const prompt = [
-    `Translate the following text into ${targetLanguageName}. Only return translated text, no explanation.`,
+    `Translate the following text into ${targetLanguageName}. Only return translated text.`,
     '',
     text
   ].join('\n');
 
-  return callGeminiGenerateContent(prompt);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${GEMINI_TRANSLATE_ENDPOINT}?key=${encodeURIComponent(apiKey)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: prompt
+              }
+            ]
+          }
+        ]
+      }),
+      signal: controller.signal
+    });
+
+    const data = await parseJsonSafely(response);
+
+    if (!response.ok) {
+      throw new Error(getGeminiErrorMessage(data, 'Gemini translation request failed'));
+    }
+
+    const translatedText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (typeof translatedText !== 'string' || !translatedText.trim()) {
+      throw new Error('Gemini API returned an empty translation result');
+    }
+
+    return translatedText.trim();
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error('Gemini translation request timed out');
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 function normalizeGeminiModelName(modelName) {
@@ -1239,10 +1323,7 @@ app.post('/api/summarize', async (req, res) => {
 app.post('/api/translate', async (req, res) => {
   try {
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-    const requestedTargetLang = typeof req.body?.targetLang === 'string' ? req.body.targetLang.trim().toLowerCase() : '';
-    const targetLang = requestedTargetLang && isValidLanguageCode(requestedTargetLang)
-      ? requestedTargetLang
-      : 'en';
+    const targetLang = typeof req.body?.targetLang === 'string' ? req.body.targetLang.trim().toLowerCase() : '';
 
     if (!text) {
       return res.status(400).json({
@@ -1251,15 +1332,42 @@ app.post('/api/translate', async (req, res) => {
       });
     }
 
-    console.log('targetLang:', targetLang);
-    console.log('language:', getTargetLanguageName(targetLang));
+    if (!targetLang) {
+      return res.status(400).json({
+        error: 'Invalid input',
+        message: 'Request body must include targetLang.'
+      });
+    }
+
+    if (!isValidLanguageCode(targetLang)) {
+      return res.status(400).json({
+        error: 'Invalid input',
+        message: 'targetLang must be a valid language code (example: hi, bn, ta).'
+      });
+    }
+
+    if (!getTargetLanguageName(targetLang)) {
+      return res.status(400).json({
+        error: 'Invalid input',
+        message: 'Unsupported targetLang. Use a supported language code.'
+      });
+    }
+
+    console.log('[translate-route] targetLang:', targetLang);
+    console.log('[translate-route] language:', getTargetLanguageName(targetLang));
 
     const result = await translateTextWithGemini(text, targetLang);
     return res.json({ result });
   } catch (error) {
     console.error('translate failed:', error);
+    const message = error instanceof Error ? error.message : 'Translation failed';
+    const statusCode = /Missing GEMINI_API_KEY|Unsupported targetLang|Invalid input/i.test(message)
+      ? 400
+      : /timed out/i.test(message)
+        ? 504
+        : 500;
 
-    return res.status(500).json({ error: 'Translation failed' });
+    return res.status(statusCode).json({ error: 'Translation failed', message });
   }
 });
 
