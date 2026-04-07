@@ -584,6 +584,25 @@ function getGeminiErrorMessage(data, fallbackMessage) {
   return fallbackMessage;
 }
 
+async function translateTextWithMyMemory(text, targetLang) {
+  const sourceLang = 'en';
+  const endpoint = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${encodeURIComponent(sourceLang)}|${encodeURIComponent(targetLang)}`;
+
+  const response = await fetch(endpoint, { method: 'GET' });
+  const data = await parseJsonSafely(response);
+
+  if (!response.ok) {
+    throw new Error('Fallback translation provider request failed');
+  }
+
+  const translatedText = data?.responseData?.translatedText;
+  if (typeof translatedText !== 'string' || !translatedText.trim()) {
+    throw new Error('Fallback translation provider returned an empty result');
+  }
+
+  return translatedText.trim();
+}
+
 async function translateTextWithGemini(text, targetLang) {
   const targetLanguageName = getTargetLanguageName(targetLang);
   const apiKey = requireGeminiApiKey();
@@ -1366,6 +1385,22 @@ app.post('/api/translate', async (req, res) => {
   } catch (error) {
     console.error('translate failed:', error);
     const message = error instanceof Error ? error.message : 'Translation failed';
+
+    if (/quota exceeded|rate limit|billing/i.test(message)) {
+      try {
+        const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
+        const targetLang = typeof req.body?.targetLang === 'string' ? req.body.targetLang.trim().toLowerCase() : '';
+
+        if (text && targetLang) {
+          console.warn('[translate-route] Gemini quota exceeded, using fallback provider');
+          const fallbackResult = await translateTextWithMyMemory(text, targetLang);
+          return res.json({ result: fallbackResult, fallback: true });
+        }
+      } catch (fallbackError) {
+        console.error('translate fallback failed:', fallbackError);
+      }
+    }
+
     const statusCode = /Missing GEMINI_API_KEY|Unsupported targetLang|Invalid input/i.test(message)
       ? 400
       : /timed out/i.test(message)
