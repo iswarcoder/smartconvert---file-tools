@@ -584,6 +584,22 @@ function getGeminiErrorMessage(data, fallbackMessage) {
   return fallbackMessage;
 }
 
+function normalizeTextForComparison(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, ' ')
+    .trim();
+}
+
+function looksUntranslated(sourceText, translatedText, targetLang) {
+  const normalizedTarget = String(targetLang || '').trim().toLowerCase();
+  if (!normalizedTarget || normalizedTarget === 'en') {
+    return false;
+  }
+
+  return normalizeTextForComparison(sourceText) === normalizeTextForComparison(translatedText);
+}
+
 async function translateTextWithMyMemory(text, targetLang) {
   const sourceLang = 'en';
   const endpoint = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(text)}&langpair=${encodeURIComponent(sourceLang)}|${encodeURIComponent(targetLang)}`;
@@ -600,7 +616,38 @@ async function translateTextWithMyMemory(text, targetLang) {
     throw new Error('Fallback translation provider returned an empty result');
   }
 
+  if (looksUntranslated(text, translatedText, targetLang)) {
+    throw new Error('Fallback translation provider returned unchanged text');
+  }
+
   return translatedText.trim();
+}
+
+async function translateTextWithGoogleGtx(text, targetLang) {
+  const endpoint = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(text)}`;
+  const response = await fetch(endpoint, { method: 'GET' });
+
+  if (!response.ok) {
+    throw new Error('Secondary fallback translation request failed');
+  }
+
+  const data = await response.json().catch(() => []);
+  const segments = Array.isArray(data?.[0]) ? data[0] : [];
+  const translatedText = segments
+    .map((segment) => (Array.isArray(segment) ? segment[0] : ''))
+    .filter(Boolean)
+    .join('')
+    .trim();
+
+  if (!translatedText) {
+    throw new Error('Secondary fallback translation returned an empty result');
+  }
+
+  if (looksUntranslated(text, translatedText, targetLang)) {
+    throw new Error('Secondary fallback translation returned unchanged text');
+  }
+
+  return translatedText;
 }
 
 async function translateTextWithGemini(text, targetLang) {
@@ -1393,8 +1440,14 @@ app.post('/api/translate', async (req, res) => {
 
         if (text && targetLang) {
           console.warn('[translate-route] Gemini quota exceeded, using fallback provider');
-          const fallbackResult = await translateTextWithMyMemory(text, targetLang);
-          return res.json({ result: fallbackResult, fallback: true });
+          try {
+            const fallbackResult = await translateTextWithMyMemory(text, targetLang);
+            return res.json({ result: fallbackResult, fallback: true });
+          } catch (providerError) {
+            console.warn('[translate-route] Primary fallback failed, trying secondary provider:', providerError instanceof Error ? providerError.message : providerError);
+            const secondaryFallbackResult = await translateTextWithGoogleGtx(text, targetLang);
+            return res.json({ result: secondaryFallbackResult, fallback: true });
+          }
         }
       } catch (fallbackError) {
         console.error('translate fallback failed:', fallbackError);
