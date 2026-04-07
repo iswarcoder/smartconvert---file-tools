@@ -41,6 +41,7 @@ let imagePdfDownloadBlobUrl = null;
 let loadingRequests = 0;
 let cloudConvertConfigured = false;
 let aiSummarizeRunning = false;
+let aiTranslateRunning = false;
 
 // ============================================
 // FORMAT MAPPING FOR CONVERSIONS
@@ -236,7 +237,10 @@ function openAiPdfFeature(feature) {
     return;
   }
 
-  showToast('Translate PDF is in preview. It will be enabled in the next update.', 'info');
+  if (feature === 'translate') {
+    showAiTranslateView();
+    return;
+  }
 }
 
 // ============================================
@@ -247,6 +251,7 @@ function showDashboard() {
   platformState.currentTool = 'dashboard';
   document.getElementById('dashboardView').style.display = 'block';
   document.getElementById('aiSummarizeView').style.display = 'none';
+  document.getElementById('aiTranslateView').style.display = 'none';
   document.getElementById('convertView').style.display = 'none';
   document.getElementById('mergePdfView').style.display = 'none';
   document.getElementById('splitPdfView').style.display = 'none';
@@ -261,6 +266,7 @@ function showHistory() {
   platformState.currentTool = 'history';
   document.getElementById('dashboardView').style.display = 'none';
   document.getElementById('aiSummarizeView').style.display = 'none';
+  document.getElementById('aiTranslateView').style.display = 'none';
   document.getElementById('convertView').style.display = 'none';
   document.getElementById('mergePdfView').style.display = 'none';
   document.getElementById('splitPdfView').style.display = 'none';
@@ -309,6 +315,14 @@ function showAiSummarizeView() {
   document.getElementById('dashboardView').style.display = 'none';
   document.getElementById('aiSummarizeView').style.display = 'block';
   platformState.currentTool = 'ai-summarize';
+  window.scrollTo(0, 0);
+}
+
+function showAiTranslateView() {
+  showDashboard();
+  document.getElementById('dashboardView').style.display = 'none';
+  document.getElementById('aiTranslateView').style.display = 'block';
+  platformState.currentTool = 'ai-translate';
   window.scrollTo(0, 0);
 }
 
@@ -440,6 +454,10 @@ function setupEventListeners() {
   // AI summarize
   document.getElementById('aiSummarizeBtn')?.addEventListener('click', () => performAiSummarize());
   document.getElementById('aiSummarizeClearBtn')?.addEventListener('click', () => resetAiSummarize());
+
+  // AI translate
+  document.getElementById('aiTranslateBtn')?.addEventListener('click', () => performAiTranslate());
+  document.getElementById('aiTranslateClearBtn')?.addEventListener('click', () => resetAiTranslate());
 }
 
 function resetAiSummarize() {
@@ -555,6 +573,102 @@ function formatAiSummarizeError(message) {
   }
 
   return text || 'Failed to summarize';
+}
+
+function resetAiTranslate() {
+  const input = document.getElementById('aiTranslateInput');
+  const lang = document.getElementById('aiTranslateTargetLang');
+  const resultWrap = document.getElementById('aiTranslateResultWrap');
+  const result = document.getElementById('aiTranslateResult');
+
+  if (input) {
+    input.value = '';
+  }
+  if (lang) {
+    lang.value = 'hi';
+  }
+  if (result) {
+    result.textContent = '';
+  }
+  if (resultWrap) {
+    resultWrap.style.display = 'none';
+  }
+
+  hideProgress('aiTranslate');
+}
+
+async function performAiTranslate() {
+  if (aiTranslateRunning) {
+    return;
+  }
+
+  const input = document.getElementById('aiTranslateInput');
+  const langInput = document.getElementById('aiTranslateTargetLang');
+  const resultWrap = document.getElementById('aiTranslateResultWrap');
+  const resultNode = document.getElementById('aiTranslateResult');
+  const button = document.getElementById('aiTranslateBtn');
+
+  const text = (input?.value || '').trim();
+  const targetLang = (langInput?.value || '').trim().toLowerCase();
+
+  if (!text) {
+    showToast('❌ Please paste text to translate.', 'error');
+    return;
+  }
+
+  if (!/^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(targetLang)) {
+    showToast('❌ Enter a valid target language code like hi, fr, es, pt-br.', 'error');
+    return;
+  }
+
+  aiTranslateRunning = true;
+  if (button) {
+    button.disabled = true;
+  }
+
+  showProgress('aiTranslate', 35, 'Translating text...');
+
+  try {
+    const response = await fetchWithTimeout(`${API_URL}/api/translate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ text, targetLang })
+    }, 60000);
+
+    if (!response.ok) {
+      throw new Error(await readErrorMessage(response));
+    }
+
+    const data = await parseJsonResponse(response);
+    const translated = String(data?.result || '').trim();
+
+    if (!translated) {
+      throw new Error('Translation failed');
+    }
+
+    showProgress('aiTranslate', 100, 'Translation ready');
+    if (resultNode) {
+      resultNode.textContent = translated;
+    }
+    if (resultWrap) {
+      resultWrap.style.display = 'block';
+    }
+
+    addConversionToHistory('pasted-text', 'AI Translate', 'translation.txt', '', '', `Target language: ${targetLang}`);
+    showToast('✅ Translation generated successfully', 'success');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Translation failed';
+    showProgress('aiTranslate', 0, '❌ Translation failed');
+    showToast(`❌ ${message || 'Translation failed'}`, 'error');
+  } finally {
+    aiTranslateRunning = false;
+    if (button) {
+      button.disabled = false;
+    }
+    setTimeout(() => hideProgress('aiTranslate'), 600);
+  }
 }
 
 // ============================================

@@ -639,6 +639,46 @@
       </div>
     </section>
 
+    <!-- AI Translate View -->
+    <section id="aiTranslateView" class="tool-view" style="display: none;">
+      <div class="tool-header">
+        <button class="back-btn" onclick="showDashboard()">← Back to Dashboard</button>
+        <h2>AI Translate PDF Text</h2>
+      </div>
+      <div class="tool-content">
+        <div class="form-group">
+          <label class="form-label" for="aiTranslateInput">Paste English text</label>
+          <textarea id="aiTranslateInput" class="form-input ai-textarea" placeholder="Paste English text here..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="aiTranslateTargetLang">Target language code</label>
+          <input id="aiTranslateTargetLang" class="form-input" value="hi" placeholder="Example: hi, fr, es, de">
+          <p class="form-hint">Example: hi (Hindi), fr (French), es (Spanish), de (German)</p>
+        </div>
+
+        <div class="ai-actions-row">
+          <button class="btn btn-action" id="aiTranslateBtn" type="button">Translate Text</button>
+          <button class="btn btn-secondary" id="aiTranslateClearBtn" type="button">Clear</button>
+        </div>
+
+        <div class="progress-section" id="aiTranslateProgress" style="display: none;">
+          <div class="progress-bar-container">
+            <div class="progress-bar">
+              <div class="progress-fill" id="aiTranslateProgressFill"></div>
+            </div>
+            <span class="progress-text" id="aiTranslateProgressText">0%</span>
+          </div>
+          <p class="progress-status" id="aiTranslateProgressStatus">Translating...</p>
+        </div>
+
+        <div class="ai-result-wrap" id="aiTranslateResultWrap" style="display: none;">
+          <h3>Translation</h3>
+          <pre id="aiTranslateResult" class="ai-result"></pre>
+        </div>
+      </div>
+    </section>
+
     <!-- History View -->
     <section id="historyView" class="view-section" style="display: none;">
       <div class="section-header">

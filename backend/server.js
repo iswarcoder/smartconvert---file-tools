@@ -22,8 +22,9 @@ const GEMINI_MODEL_FALLBACKS = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'ge
 const GEMINI_CHUNK_SIZE = 2000;
 const GEMINI_TIMEOUT_MS = 30000;
 const SUMMARY_WORD_LIMIT = 2000;
-const LIBRE_TRANSLATE_API_URLS = String(process.env.LIBRE_TRANSLATE_API_URLS || '').trim();
-const TRANSLATE_CHUNK_SIZE = 1500;
+const LIBRE_TRANSLATE_PRIMARY_URL = 'https://libretranslate.de/translate';
+const LIBRE_TRANSLATE_BACKUP_URL = 'https://translate.argosopentech.com/translate';
+const TRANSLATE_CHUNK_SIZE = 1200;
 const TRANSLATE_TIMEOUT_MS = 30000;
 const upload = multer({
   dest: TEMP_DIR,
@@ -511,25 +512,6 @@ function isValidLanguageCode(code) {
   return /^[a-z]{2,3}(?:-[a-z]{2,4})?$/i.test(normalized);
 }
 
-function getLibreTranslateEndpoints() {
-  if (LIBRE_TRANSLATE_API_URLS) {
-    const customEndpoints = LIBRE_TRANSLATE_API_URLS
-      .split(',')
-      .map((url) => url.trim())
-      .filter(Boolean);
-
-    if (customEndpoints.length > 0) {
-      return customEndpoints;
-    }
-  }
-
-  return [
-    'https://translate.argosopentech.com/translate',
-    'https://libretranslate.de/translate',
-    'https://libretranslate.com/translate'
-  ];
-}
-
 async function parseJsonBodySafe(response) {
   const raw = await response.text().catch(() => '');
   const contentType = String(response.headers.get('content-type') || '').toLowerCase();
@@ -545,64 +527,55 @@ async function parseJsonBodySafe(response) {
   }
 }
 
+async function callLibreTranslateEndpoint(endpoint, text, targetLang, signal) {
+  const payload = {
+    q: text,
+    source: 'en',
+    target: targetLang,
+    format: 'text'
+  };
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json'
+    },
+    body: JSON.stringify(payload),
+    signal
+  });
+
+  const { data, raw, contentType } = await parseJsonBodySafe(response);
+  const preview = String(raw || '').slice(0, 200);
+  console.log(`translate provider=${endpoint} status=${response.status} contentType=${contentType} bodyPreview=${preview}`);
+
+  if (!response.ok) {
+    throw new Error(data?.error || data?.message || `LibreTranslate request failed (${response.status})`);
+  }
+
+  if (!data || /text\/html|<!doctype html|<html/i.test(`${contentType}\n${raw}`)) {
+    throw new Error(`Invalid translation response from ${endpoint}`);
+  }
+
+  const translatedText = String(data?.translatedText || '').trim();
+  if (!translatedText) {
+    throw new Error(`Empty translation response from ${endpoint}`);
+  }
+
+  return translatedText;
+}
+
 async function callLibreTranslateChunk(text, targetLang) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TRANSLATE_TIMEOUT_MS);
-  const apiKey = String(process.env.LIBRE_TRANSLATE_API_KEY || '').trim();
-  const endpoints = getLibreTranslateEndpoints();
-  let lastError = null;
 
   try {
-    for (const endpoint of endpoints) {
-      try {
-        const payload = {
-          q: text,
-          source: 'en',
-          target: targetLang,
-          format: 'text'
-        };
-
-        if (apiKey) {
-          payload.api_key = apiKey;
-        }
-
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Accept: 'application/json'
-          },
-          body: JSON.stringify(payload),
-          signal: controller.signal
-        });
-
-        const { data, raw, contentType } = await parseJsonBodySafe(response);
-
-        if (!response.ok) {
-          const upstreamMessage = data?.error || data?.message || raw || `LibreTranslate request failed (${response.status})`;
-          lastError = new Error(upstreamMessage);
-          continue;
-        }
-
-        if (!data || /text\/html|<!doctype html|<html/i.test(`${contentType}\n${raw}`)) {
-          lastError = new Error(`LibreTranslate endpoint returned non-JSON response: ${endpoint}`);
-          continue;
-        }
-
-        const translatedText = String(data?.translatedText || data?.translation || '').trim();
-        if (!translatedText) {
-          lastError = new Error(`LibreTranslate returned an empty translation from ${endpoint}`);
-          continue;
-        }
-
-        return translatedText;
-      } catch (endpointError) {
-        lastError = endpointError instanceof Error ? endpointError : new Error('Unknown translation endpoint error');
-        continue;
-      }
+    try {
+      return await callLibreTranslateEndpoint(LIBRE_TRANSLATE_PRIMARY_URL, text, targetLang, controller.signal);
+    } catch (primaryError) {
+      console.error('Primary LibreTranslate failed:', primaryError);
+      return await callLibreTranslateEndpoint(LIBRE_TRANSLATE_BACKUP_URL, text, targetLang, controller.signal);
     }
-
-    throw lastError || new Error('All LibreTranslate endpoints failed');
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error('LibreTranslate request timed out');
@@ -1326,26 +1299,7 @@ app.post('/api/translate', async (req, res) => {
   } catch (error) {
     console.error('translate failed:', error);
 
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-    if (/empty translation|non-JSON response|All LibreTranslate endpoints failed|ENOTFOUND|fetch failed|LibreTranslate request failed|api key|portal\.libretranslate/i.test(message) && text) {
-      return res.json({
-        result: text,
-        fallback: true,
-        message: 'Translation provider is temporarily unavailable. Returned original text.'
-      });
-    }
-
-    const statusCode = /Text is required|Invalid input/i.test(message)
-      ? 400
-      : /timed out/i.test(message)
-        ? 504
-        : 502;
-
-    return res.status(statusCode).json({
-      error: 'translate failed',
-      message
-    });
+    return res.status(500).json({ error: 'Translation failed' });
   }
 });
 
