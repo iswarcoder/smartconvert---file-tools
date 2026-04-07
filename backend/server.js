@@ -1328,7 +1328,7 @@ app.post('/api/translate', async (req, res) => {
 
     const message = error instanceof Error ? error.message : 'Unknown error';
     const text = typeof req.body?.text === 'string' ? req.body.text.trim() : '';
-    if (/empty translation|non-JSON response|All LibreTranslate endpoints failed|ENOTFOUND|fetch failed|LibreTranslate request failed/i.test(message) && text) {
+    if (/empty translation|non-JSON response|All LibreTranslate endpoints failed|ENOTFOUND|fetch failed|LibreTranslate request failed|api key|portal\.libretranslate/i.test(message) && text) {
       return res.json({
         result: text,
         fallback: true,
