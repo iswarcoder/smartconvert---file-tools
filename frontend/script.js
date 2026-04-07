@@ -516,7 +516,8 @@ async function performAiSummarize() {
     addConversionToHistory('pasted-text', 'AI Summarize', 'summary.txt', '', '', `Input length: ${text.length} chars`);
     showToast('✅ Summary generated successfully', 'success');
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to summarize';
+    const rawMessage = error instanceof Error ? error.message : 'Failed to summarize';
+    const message = formatAiSummarizeError(rawMessage);
     showProgress('aiSummarize', 0, '❌ Summarization failed');
     showToast(`❌ ${message}`, 'error');
   } finally {
@@ -529,6 +530,24 @@ async function performAiSummarize() {
       hideProgress('aiSummarize');
     }, 600);
   }
+}
+
+function formatAiSummarizeError(message) {
+  const text = String(message || '').trim();
+
+  if (/quota exceeded|rate limit|billing/i.test(text)) {
+    return 'Gemini quota reached. Please wait a bit or upgrade Gemini billing. Temporary fallback can be enabled on backend.';
+  }
+
+  if (/Missing GEMINI_API_KEY/i.test(text)) {
+    return 'Server is missing GEMINI_API_KEY. Add it in Render environment variables.';
+  }
+
+  if (/timed out/i.test(text)) {
+    return 'AI request timed out. Please try again with shorter text.';
+  }
+
+  return text || 'Failed to summarize';
 }
 
 // ============================================
